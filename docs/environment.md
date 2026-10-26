@@ -103,6 +103,22 @@ and lists every variable the API reads and nothing else.
   importing it (see the dynamic `import()` in `test/auth.e2e.spec.ts`).
 - **The schema is the API's, not the repo's** — `@crm/auth` and the agent read their own.
 
+## AI provider key encryption
+
+`AI_PROVIDER_ENCRYPTION_KEY` encrypts OpenAI and Anthropic keys saved by workspace administrators.
+Generate 32 bytes with `openssl rand -base64 32`.
+Set the same value on the API and agent. Never set it on the browser.
+The key is optional in Gateway mode. No plaintext fallback exists.
+Missing encryption configuration disables direct-provider key storage and execution.
+Invalid configured values fail API environment validation.
+Keep the encryption key stable. Changing it requires saving the provider keys again.
+Back it up separately from the database using your deployment secret manager.
+Removing a provider key does not revoke it at the provider.
+
+Provider keys are settings, not environment variables.
+`AI_GATEWAY_API_KEY` or Vercel OIDC still controls Gateway authentication.
+No OpenAI or Anthropic credential is required merely to build or test the application.
+
 ## Builder chat encryption
 
 `CHAT_EVENT_ENCRYPTION_KEY` encrypts new builder chat events before database storage.

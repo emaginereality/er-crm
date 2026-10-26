@@ -1430,12 +1430,27 @@ model SuppressedContact {
   @@map("suppressedContact")
 }
 
+enum AiProviderMode {
+  gateway
+  direct
+}
+
 model AppSetting {
   id String @id
 
   agentModelId String?
 
   agentModelContextWindow Int?
+
+  aiProviderMode AiProviderMode @default(gateway)
+
+  directModelId String?
+
+  directModelContextWindow Int?
+
+  openaiApiKeyEncrypted String?
+
+  anthropicApiKeyEncrypted String?
 
   contextDevApiKey String?
 

@@ -1,6 +1,7 @@
 "use client";
 
 import ChevronDown from "@carbon/icons-react/es/ChevronDown";
+import { Alert, AlertDescription, AlertTitle } from "@crm/ui/components/alert";
 import { Button } from "@crm/ui/components/button";
 import {
 	Card,
@@ -67,7 +68,13 @@ function byProvider(models: CatalogModel[]): [string, CatalogModel[]][] {
 	return [...groups];
 }
 
-export function AgentModel() {
+export function AgentModel({
+	mode,
+	disabled = false,
+}: {
+	mode: "gateway" | "direct";
+	disabled?: boolean;
+}) {
 	const trpc = useTRPC();
 	const cache = useCrmCache();
 	const [open, setOpen] = useState(false);
@@ -85,11 +92,20 @@ export function AgentModel() {
 		}),
 	);
 
+	if (settings.isError) {
+		return (
+			<Alert variant="warning">
+				<AlertTitle>AI model settings are unavailable</AlertTitle>
+				<AlertDescription>{settings.error.message}</AlertDescription>
+			</Alert>
+		);
+	}
 	if (!settings.data) return null;
 
 	const { selectedId, effectiveId, defaultId, effective } = settings.data;
 	const models = catalog.data?.models ?? [];
-	const unavailable = catalog.data !== undefined && !catalog.data.available;
+	const unavailable =
+		catalog.isError || (catalog.data !== undefined && !catalog.data.available);
 
 	const defaultModel = models.find((model) => model.id === defaultId);
 	const current = selectedId ?? FOLLOW_DEFAULT;
@@ -109,9 +125,11 @@ export function AgentModel() {
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Research agent</CardTitle>
+				<CardTitle>AI model</CardTitle>
 				<CardDescription>
-					The model the agent thinks with, routed through the Vercel AI Gateway.
+					{mode === "gateway"
+						? "Models routed through Vercel AI Gateway."
+						: "Direct models from providers with a saved API key. Provider account access still applies."}
 				</CardDescription>
 			</CardHeader>
 
@@ -123,7 +141,13 @@ export function AgentModel() {
 							role="combobox"
 							aria-expanded={open}
 							aria-label="Model"
-							disabled={save.isPending || catalog.isPending || unavailable}
+							disabled={
+								disabled ||
+								save.isPending ||
+								catalog.isPending ||
+								unavailable ||
+								models.length === 0
+							}
 						>
 							{currentLabel}
 							<Icon icon={ChevronDown} data-icon="inline-end" />
@@ -136,15 +160,17 @@ export function AgentModel() {
 							<CommandList>
 								<CommandEmpty>No model matches that.</CommandEmpty>
 
-								<CommandGroup>
-									<CommandItem
-										value={`default ${defaultId}`}
-										data-checked={current === FOLLOW_DEFAULT}
-										onSelect={() => choose(FOLLOW_DEFAULT)}
-									>
-										Default — {defaultModel?.name ?? defaultId}
-									</CommandItem>
-								</CommandGroup>
+								{mode === "gateway" ? (
+									<CommandGroup>
+										<CommandItem
+											value={`default ${defaultId}`}
+											data-checked={current === FOLLOW_DEFAULT}
+											onSelect={() => choose(FOLLOW_DEFAULT)}
+										>
+											Default — {defaultModel?.name ?? defaultId}
+										</CommandItem>
+									</CommandGroup>
+								) : null}
 
 								{byProvider(models).map(([provider, group]) => (
 									<CommandGroup key={provider} heading={provider}>
@@ -174,7 +200,7 @@ export function AgentModel() {
 
 				<p className="text-muted-foreground text-xs">
 					{unavailable
-						? `Could not reach the AI Gateway to list models. The agent is still running ${effectiveId}.`
+						? `Could not load available models. The selected model remains ${effectiveId}.`
 						: effective
 							? `${effectiveId} · ${contextHint(effective.contextWindowTokens)}${
 									priceHint(effective) ? ` · ${priceHint(effective)}` : ""

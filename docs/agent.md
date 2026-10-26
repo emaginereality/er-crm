@@ -11,16 +11,49 @@ are in `docs/setup.md`.
 
 ## Model
 
-Default `zai/glm-5.2-fast`; `DEFAULT_AGENT_MODEL` in `@crm/db/settings` because the
-agent and the API both need it.
+Settings → General gives owners and administrators two routing modes.
+AI Gateway remains the default. Its default model remains `zai/glm-5.2-fast`.
+Direct mode uses independently saved OpenAI and Anthropic keys.
+Both providers can stay configured. Each mode retains its own model selection.
 
-- **A row (`AppSetting`), not an env var**, via `defineDynamic` on `session.started`.
-  Open conversations keep their model — prompt caches are per model.
-- **`lib/model.ts` always sends `modelContextWindowTokens`**; eve never inherits it.
-- **A failed read logs and keeps the compiled fallback.** Never throws.
-- **The chooser offers only `tool-use` models** (`ModelCatalogService`).
-- **Not a frontier model, deliberately** — refusing wrong answers is enforced by the
-  tools and evidence model, not model strength.
+- `AppSetting` stores encrypted provider keys. See `environment.md` for encryption setup.
+- `session.started` pins the route, model ID, and context window in durable session state.
+- `step.started` creates the direct provider adapter with the current saved key.
+- Root research, builder, and team-agent runner use the same adapter.
+- New sessions use the selected mode. Existing sessions retain their route and model.
+- New team-agent runs retain their immutable version's model in the selected mode.
+- An incompatible version stops with instructions to select a supported model and create a new version.
+- Provider changes never delete CRM records, agent versions, conversations, or history.
+- Replacing a key affects the next step. Removing a key blocks the affected session's next step.
+- Missing keys, unreadable settings, or failed decryption stop the turn. No automatic Gateway fallback exists.
+- Direct calls use fixed provider endpoints and reject redirects.
+- Direct model context limits come from the local verified catalog, never Gateway metadata.
+- Pre-upgrade Gateway sessions retain their model. Their first resumed step requires public Gateway metadata.
+- Gateway catalog outages therefore block these legacy resumes until metadata becomes available.
+
+The direct catalog lives in `packages/validation/src/ai-providers.ts`.
+Model IDs, context windows, and tool support come from the provider documentation:
+[OpenAI models](https://developers.openai.com/api/docs/models) and
+[Claude models](https://platform.claude.com/docs/en/models/overview).
+These sources were checked on 2026-10-26. Account-specific model access still depends on the provider.
+
+Eve 0.69 requires serializable model IDs at session start.
+Its built-in helpers only accept model IDs and read environment or local-login credentials.
+The direct adapter uses explicit-key AI SDK factories instead of changing process environment.
+Keys never enter session state, model options, public events, or API output.
+
+Automatic compaction uses the active provider adapter.
+Manual compaction returns 409 because Eve 0.69 bypasses `step.started` on that path.
+The CRM browser proxy already rejects manual compaction.
+
+### Explicit connection tests
+
+`POST /internal/crm/verify-ai-provider` requires `AGENT_BRIDGE_SECRET`.
+The authenticated admin API sends only the selected provider name.
+The agent decrypts the saved key and calls that provider's models-list endpoint.
+It sends no prompt and generates no tokens. Saving a key never starts this test.
+A successful check confirms authentication only, not model access, billing, or quota.
+Provider bodies and transport errors never appear in the test result.
 
 ## Pictures are copied, never linked
 

@@ -29,6 +29,7 @@ import { purgeSyncedDataOutput, revokeAccessOutput, microsoftConnectionStatusOut
 import { mcpListOutput, mcpGetInput, mcpGetOutput, mcpToolsInput, mcpToolsOutput, mcpStartInput, mcpStartOutput, mcpReconnectInput, mcpReconnectOutput, mcpDisconnectInput, mcpDisconnectOutput, mcpReviewToolsInput, mcpReviewToolsOutput } from "../mcp/mcp.contracts";
 import { savedViewListInput, savedViewListOutput, savedViewCreateInput, savedViewOutput, savedViewUpdateArgs, savedViewIdInput, savedViewDeleteOutput } from "../saved-views/saved-views.contracts";
 import { agentModelOutput, modelCatalogOutput, setAgentModelInput, researchKeyOutput, setResearchKeyInput, archiveRetentionOutput, setArchiveRetentionDaysInput } from "../settings/settings.contracts";
+import { aiProvidersOutput, setAiProviderModeInput, saveAiProviderKeyInput, aiProviderInput, aiProviderTestOutput } from "@crm/validation/ai-providers";
 import { slackStatusOutput, slackMatchesOutput, slackChannelsInput, slackChannelsOutput, slackJoinChannelInput, slackJoinChannelOutput, slackRefreshPeopleOutput, slackCreateChannelInput, slackCreateChannelOutput, slackDisconnectOutput } from "../slack/slack.contracts";
 import { ssoSignInOptionsOutput, ssoSettingsOutput, ssoProviderListInput, ssoProviderListOutput, registerSsoProviderInput, ssoProviderOutput, deleteSsoProviderInput, deleteSsoProviderOutput } from "../sso/sso.contracts";
 import { trackingSettingsOutput, trackingFlagInput, cookieLifetimeInput, addDomainInput, trackedDomainOutput, removeDomainInput, rotateSiteIdOutput, verifyInput, verifyOutput, sourcesOutput, companyActivityInput, websiteActivityOutput, contactActivityInput } from "../tracking/tracking.contracts";
@@ -657,6 +658,25 @@ const appRouter = t.router({
     setAgentModel: publicProcedure
       .input(setAgentModelInput)
       .output(agentModelOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    aiProviders: publicProcedure
+      .output(aiProvidersOutput)
+      .query(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    setAiProviderMode: publicProcedure
+      .input(setAiProviderModeInput)
+      .output(aiProvidersOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    saveAiProviderKey: publicProcedure
+      .input(saveAiProviderKeyInput)
+      .output(aiProvidersOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    removeAiProviderKey: publicProcedure
+      .input(aiProviderInput)
+      .output(aiProvidersOutput)
+      .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
+    testAiProviderKey: publicProcedure
+      .input(aiProviderInput)
+      .output(aiProviderTestOutput)
       .mutation(async () => "PLACEHOLDER_DO_NOT_REMOVE" as any),
     researchKey: publicProcedure
       .output(researchKeyOutput)
