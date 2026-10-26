@@ -1,3 +1,4 @@
+import { canManageAiProviders } from "@crm/auth/organization";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import {
@@ -12,7 +13,7 @@ import {
 import { requireSession } from "@/lib/session";
 import { HydrateClient } from "@/lib/trpc/hydrate";
 import { getServerQueryClient, getServerTrpc } from "@/lib/trpc/server";
-import { AgentModel } from "./agent-model";
+import { AiProviders } from "./ai-providers";
 import { ArchiveRetention } from "./archive-retention";
 import { ResearchKey } from "./research-key";
 import { WorkspaceForm } from "./workspace-form";
@@ -28,7 +29,7 @@ export default function GeneralSettingsPage() {
 				<PageShellHeading>
 					<PageShellTitle>General</PageShellTitle>
 					<PageShellDescription>
-						Who you are, and the model the research agent thinks with.
+						Workspace details, AI providers, and agent models.
 					</PageShellDescription>
 				</PageShellHeading>
 			</PageShellHeader>
@@ -48,13 +49,20 @@ async function Settings() {
 	const trpc = getServerTrpc();
 	const queryClient = getServerQueryClient();
 
-	await Promise.all([
-		queryClient.prefetchQuery(trpc.workspace.get.queryOptions()),
-		queryClient.prefetchQuery(trpc.settings.agentModel.queryOptions()),
-		queryClient.prefetchQuery(trpc.settings.modelCatalog.queryOptions()),
+	const [workspace] = await Promise.all([
+		queryClient.fetchQuery(trpc.workspace.get.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.researchKey.queryOptions()),
 		queryClient.prefetchQuery(trpc.settings.archiveRetention.queryOptions()),
 	]);
+
+	const canManageProviders = canManageAiProviders(workspace.viewerRole);
+	if (canManageProviders) {
+		await Promise.all([
+			queryClient.prefetchQuery(trpc.settings.aiProviders.queryOptions()),
+			queryClient.prefetchQuery(trpc.settings.agentModel.queryOptions()),
+			queryClient.prefetchQuery(trpc.settings.modelCatalog.queryOptions()),
+		]);
+	}
 
 	return (
 		<HydrateClient>
@@ -62,7 +70,7 @@ async function Settings() {
 				<WorkspaceForm />
 				<ResearchKey />
 				<ArchiveRetention />
-				<AgentModel />
+				{canManageProviders ? <AiProviders /> : null}
 			</div>
 		</HydrateClient>
 	);

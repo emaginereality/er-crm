@@ -1,3 +1,4 @@
+import { type Channel, POST } from "eve/channels";
 import {
 	type AuthFn,
 	extractBearerToken,
@@ -43,6 +44,26 @@ export function repFromCrm(secret: string): AuthFn<Request> {
 
 const secret = process.env.AGENT_BRIDGE_SECRET;
 
-export default eveChannel({
+const channel = eveChannel({
 	auth: [...(secret ? [repFromCrm(secret)] : []), vercelOidc(), localDev()],
 });
+
+const guardedChannel: Channel = {
+	...channel,
+	routes: channel.routes.map((route) =>
+		route.path === "/eve/v1/session/:sessionId/compact"
+			? POST(route.path, async () =>
+					Response.json(
+						{
+							ok: false,
+							error:
+								"Manual compaction is unavailable. Automatic compaction remains enabled.",
+						},
+						{ status: 409 },
+					),
+				)
+			: route,
+	),
+};
+
+export default guardedChannel;

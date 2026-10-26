@@ -18,11 +18,36 @@ export interface AgentModelSetting {
 	isDefault: boolean;
 }
 
-export async function readAgentModel(db: Db): Promise<AgentModelSetting> {
+export async function readAgentModel(
+	db: Pick<Db, "appSetting">,
+): Promise<AgentModelSetting> {
 	const row = await db.appSetting.findUnique({
 		where: { id: SETTINGS_ID },
-		select: { agentModelId: true, agentModelContextWindow: true },
+		select: {
+			agentModelId: true,
+			agentModelContextWindow: true,
+			aiProviderMode: true,
+			directModelId: true,
+			directModelContextWindow: true,
+		},
 	});
+
+	if (row?.aiProviderMode === "direct") {
+		if (
+			!row.directModelId ||
+			!row.directModelContextWindow ||
+			row.directModelContextWindow < 1
+		) {
+			throw new Error(
+				"The direct AI model is not configured. Ask an administrator to select a model.",
+			);
+		}
+		return {
+			id: row.directModelId,
+			contextWindowTokens: row.directModelContextWindow,
+			isDefault: false,
+		};
+	}
 
 	if (!row?.agentModelId) {
 		return { ...DEFAULT_AGENT_MODEL, isDefault: true };

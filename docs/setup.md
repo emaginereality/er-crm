@@ -24,6 +24,23 @@ run needs `db:migrate` only for the seed that follows it. When the database and
 they do not match — reconcile with `db:migrate`, or `db:reset` when the divergence
 is an edited migration that has already been applied.
 
+## Configure AI routing
+
+1. Apply database migrations during deployment.
+2. Keep the existing Gateway authentication for Gateway mode.
+3. Set `AI_PROVIDER_ENCRYPTION_KEY` on both API and agent for direct mode.
+4. Sign in as a workspace owner or administrator. Open Settings → General.
+5. Save an OpenAI key, an Anthropic key, or both.
+6. Click **Test connection** to check each saved key explicitly.
+7. Select **My API keys**, confirm the change, and select an available model.
+
+Use a new session to apply a route or model change.
+Existing sessions retain their route and model. Keys are read again at each step.
+Switch back to **Vercel AI Gateway** without losing the saved direct keys or CRM history.
+Removing the current direct provider key requires another provider model or Gateway mode first.
+A saved team-agent version with an incompatible model must be replaced before its next run.
+The Context research-key onboarding gate remains separate and unchanged.
+
 ## Google Cloud
 
 - **Enable the Gmail API and the Google Calendar API** on the project.

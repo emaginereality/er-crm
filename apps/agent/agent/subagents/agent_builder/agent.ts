@@ -1,11 +1,14 @@
 import { defineAgent, defineDynamic } from "eve";
-import { selectedModel } from "../../lib/model";
+import { startSessionModel, stepModel } from "../../lib/model";
 
 export default defineAgent({
 	description:
 		"Turn one private CRM builder-chat request into a validated, reviewable team-agent version without deploying it.",
 	model: defineDynamic({
-		events: { "session.started": () => selectedModel() },
+		events: {
+			"session.started": () => startSessionModel(),
+			"step.started": stepModel,
+		},
 	}),
 	limits: {
 		maxInputTokensPerSession: 100_000,

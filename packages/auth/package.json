@@ -19,7 +19,8 @@
 		"./signed-in": "./src/signed-in.ts",
 		"./slack-scopes": "./src/slack-scopes.ts",
 		"./sso": "./src/sso.ts",
-		"./workspace": "./src/workspace.ts"
+		"./workspace": "./src/workspace.ts",
+		"./ai-provider-crypto": "./src/ai-provider-crypto.ts"
 	},
 	"scripts": {
 		"auth:generate": "better-auth generate --config src/auth.ts --output ../db/prisma/schema.prisma --y",

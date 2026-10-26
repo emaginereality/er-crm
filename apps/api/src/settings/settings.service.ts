@@ -1,18 +1,40 @@
-import type { Db } from "@crm/db";
+import {
+	aiProviderSecretPurpose,
+	createAiProviderSecretBox,
+} from "@crm/auth/ai-provider-crypto";
+import { canManageAiProviders, workspaceRoleOf } from "@crm/auth/organization";
+import type { Db, Prisma } from "@crm/db";
+import {
+	type AiProvider,
+	type AiProviderMode,
+	readAiProviderSettings,
+} from "@crm/db/ai-providers";
 import {
 	DEFAULT_AGENT_MODEL,
 	maskKey,
 	readAgentModel,
 	readArchiveRetentionDays,
 	readContextDevKey,
-	writeAgentModel,
+	SETTINGS_ID,
 	writeArchiveRetentionDays,
 	writeContextDevKey,
 } from "@crm/db/settings";
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import {
+	type AiProvidersSettings,
+	configuredDirectAiModels,
+	directAiModel,
+} from "@crm/validation/ai-providers";
+import {
+	BadRequestException,
+	ConflictException,
+	ForbiddenException,
+	Injectable,
+	Logger,
+} from "@nestjs/common";
 import { ResearchKeyService } from "../agent/research-key.service";
 import { BackfillService } from "../backfill/backfill.service";
 import { InjectDatabase } from "../database/database.constants";
+import { testSavedAiProvider } from "./ai-provider-test";
 import { ModelCatalogService } from "./model-catalog.service";
 import type {
 	AgentModelSettings,
@@ -33,56 +55,246 @@ export class SettingsService {
 	) {}
 
 	async agentModel(): Promise<AgentModelSettings> {
-		const [model, row] = await Promise.all([
+		const [model, providers, row] = await Promise.all([
 			readAgentModel(this.db),
-			this.db.appSetting.findFirst({ select: { updatedAt: true } }),
+			readAiProviderSettings(this.db),
+			this.db.appSetting.findUnique({
+				where: { id: SETTINGS_ID },
+				select: { updatedAt: true },
+			}),
 		]);
-
+		const direct = providers.mode === "direct";
 		return {
 			selectedId: model.isDefault ? null : model.id,
 			effectiveId: model.id,
-			defaultId: DEFAULT_AGENT_MODEL.id,
-			effective: await this.catalog.find(model.id),
+			defaultId: direct
+				? (configuredDirectAiModels(providers)[0]?.id ?? model.id)
+				: DEFAULT_AGENT_MODEL.id,
+			effective: direct
+				? (directAiModel(model.id) ?? null)
+				: await this.catalog.find(model.id),
 			updatedAt: row?.updatedAt.toISOString() ?? null,
 		};
 	}
 
-	async setAgentModel(modelId: string | null): Promise<AgentModelSettings> {
-		if (modelId === null) {
-			await writeAgentModel(this.db, null);
-			this.logger.log({ message: "Agent model reset to the default" });
-			return this.agentModel();
-		}
-
-		const models = await this.catalog.models();
-
-		if (!models) {
+	async setAgentModel(
+		userId: string,
+		modelId: string | null,
+	): Promise<AgentModelSettings> {
+		await this.requireAiAdmin(userId);
+		const before = await readAiProviderSettings(this.db);
+		const models =
+			before.mode === "direct"
+				? configuredDirectAiModels(before)
+				: await this.catalog.models();
+		if (!models && modelId !== null) {
 			throw new BadRequestException(
-				"Could not reach the AI Gateway to check that model. Try again in a moment.",
+				"The model catalog is unavailable. Try again later.",
 			);
 		}
-
-		const chosen = models.find((model) => model.id === modelId);
-
-		if (!chosen) {
+		const chosen = models?.find((model) => model.id === modelId);
+		if (modelId !== null && !chosen) {
 			throw new BadRequestException(
-				`The AI Gateway does not serve a tool-using model called "${modelId}".`,
+				"Select an available tool-using model from the configured providers.",
 			);
 		}
-
-		await writeAgentModel(this.db, {
-			id: chosen.id,
-			contextWindowTokens: chosen.contextWindowTokens,
+		await this.db.$transaction(async (tx) => {
+			const row = await this.lockAiSettings(tx);
+			if (row.aiProviderMode !== before.mode) {
+				throw new ConflictException(
+					"The AI mode changed. Refresh settings and try again.",
+				);
+			}
+			if (row.aiProviderMode === "direct") {
+				this.requireEncryption();
+				const available = configuredDirectAiModels({
+					openaiConfigured: Boolean(row.openaiApiKeyEncrypted),
+					anthropicConfigured: Boolean(row.anthropicApiKeyEncrypted),
+				});
+				const direct =
+					modelId === null
+						? available[0]
+						: available.find((model) => model.id === modelId);
+				if (!direct) {
+					throw new BadRequestException(
+						"Save a key for this provider before selecting its model.",
+					);
+				}
+				await tx.appSetting.update({
+					where: { id: SETTINGS_ID },
+					data: {
+						directModelId: direct.id,
+						directModelContextWindow: direct.contextWindowTokens,
+					},
+				});
+			} else {
+				await tx.appSetting.update({
+					where: { id: SETTINGS_ID },
+					data: {
+						agentModelId: chosen?.id ?? null,
+						agentModelContextWindow: chosen?.contextWindowTokens ?? null,
+					},
+				});
+			}
 		});
-
-		this.logger.log({ message: "Agent model changed", modelId: chosen.id });
-
+		this.logger.log({ message: "Agent model changed" });
 		return this.agentModel();
 	}
 
 	async modelCatalog(): Promise<ModelCatalogResult> {
+		const providers = await readAiProviderSettings(this.db);
+		if (providers.mode === "direct") {
+			return { models: configuredDirectAiModels(providers), available: true };
+		}
 		const models = await this.catalog.models();
 		return { models: models ?? [], available: models !== null };
+	}
+
+	async aiProviders(userId: string): Promise<AiProvidersSettings> {
+		await this.requireAiAdmin(userId);
+		const settings = await readAiProviderSettings(this.db);
+		return {
+			mode: settings.mode,
+			encryptionConfigured: Boolean(createAiProviderSecretBox()),
+			openai: {
+				configured: settings.openaiConfigured,
+				hint: settings.openaiConfigured ? "••••" : null,
+			},
+			anthropic: {
+				configured: settings.anthropicConfigured,
+				hint: settings.anthropicConfigured ? "••••" : null,
+			},
+			directModelId: settings.directModelId,
+		};
+	}
+
+	async setAiProviderMode(
+		userId: string,
+		mode: AiProviderMode,
+	): Promise<AiProvidersSettings> {
+		await this.requireAiAdmin(userId);
+		await this.db.$transaction(async (tx) => {
+			const row = await this.lockAiSettings(tx);
+			if (mode === "direct") {
+				this.requireEncryption();
+				const models = configuredDirectAiModels({
+					openaiConfigured: Boolean(row.openaiApiKeyEncrypted),
+					anthropicConfigured: Boolean(row.anthropicApiKeyEncrypted),
+				});
+				const selected =
+					models.find((model) => model.id === row.directModelId) ?? models[0];
+				if (!selected) {
+					throw new BadRequestException(
+						"Save an OpenAI or Anthropic API key before enabling direct mode.",
+					);
+				}
+				await tx.appSetting.update({
+					where: { id: SETTINGS_ID },
+					data: {
+						aiProviderMode: mode,
+						directModelId: selected.id,
+						directModelContextWindow: selected.contextWindowTokens,
+					},
+				});
+			} else {
+				await tx.appSetting.update({
+					where: { id: SETTINGS_ID },
+					data: { aiProviderMode: mode },
+				});
+			}
+		});
+		return this.aiProviders(userId);
+	}
+
+	async saveAiProviderKey(
+		userId: string,
+		provider: AiProvider,
+		apiKey: string,
+	): Promise<AiProvidersSettings> {
+		await this.requireAiAdmin(userId);
+		const encrypted = this.requireEncryption().encrypt(
+			apiKey,
+			aiProviderSecretPurpose(provider),
+		);
+		await this.db.$transaction(async (tx) => {
+			await this.lockAiSettings(tx);
+			await tx.appSetting.update({
+				where: { id: SETTINGS_ID },
+				data:
+					provider === "openai"
+						? { openaiApiKeyEncrypted: encrypted }
+						: { anthropicApiKeyEncrypted: encrypted },
+			});
+		});
+		return this.aiProviders(userId);
+	}
+
+	async removeAiProviderKey(
+		userId: string,
+		provider: AiProvider,
+	): Promise<AiProvidersSettings> {
+		await this.requireAiAdmin(userId);
+		await this.db.$transaction(async (tx) => {
+			const row = await this.lockAiSettings(tx);
+			if (
+				row.aiProviderMode === "direct" &&
+				row.directModelId?.startsWith(`${provider}/`)
+			) {
+				throw new BadRequestException(
+					"Select another provider's model or switch to AI Gateway before removing this key.",
+				);
+			}
+			await tx.appSetting.update({
+				where: { id: SETTINGS_ID },
+				data:
+					provider === "openai"
+						? { openaiApiKeyEncrypted: null }
+						: { anthropicApiKeyEncrypted: null },
+			});
+		});
+		return this.aiProviders(userId);
+	}
+
+	async testAiProviderKey(userId: string, provider: AiProvider) {
+		await this.requireAiAdmin(userId);
+		this.requireEncryption();
+		const settings = await readAiProviderSettings(this.db);
+		if (
+			!(provider === "openai"
+				? settings.openaiConfigured
+				: settings.anthropicConfigured)
+		) {
+			throw new BadRequestException(
+				"Save this provider's API key before testing the connection.",
+			);
+		}
+		return testSavedAiProvider(provider);
+	}
+
+	private async requireAiAdmin(userId: string) {
+		if (!canManageAiProviders(await workspaceRoleOf(userId, this.db))) {
+			throw new ForbiddenException(
+				"Only workspace owners and administrators can manage AI providers.",
+			);
+		}
+	}
+
+	private requireEncryption() {
+		const box = createAiProviderSecretBox();
+		if (!box) {
+			throw new BadRequestException(
+				"Configure AI_PROVIDER_ENCRYPTION_KEY on the API and agent before using direct providers.",
+			);
+		}
+		return box;
+	}
+
+	private lockAiSettings(tx: Prisma.TransactionClient) {
+		return tx.appSetting.upsert({
+			where: { id: SETTINGS_ID },
+			create: { id: SETTINGS_ID },
+			update: { id: SETTINGS_ID },
+		});
 	}
 
 	async researchKey(): Promise<ResearchKeySettings> {

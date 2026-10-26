@@ -1,6 +1,21 @@
+import {
+	aiProviderInput,
+	aiProvidersOutput,
+	aiProviderTestOutput,
+	saveAiProviderKeyInput,
+	setAiProviderModeInput,
+} from "@crm/validation/ai-providers";
 import { Inject } from "@nestjs/common";
-import { Input, Mutation, Query, Router, UseMiddlewares } from "nestjs-trpc";
+import {
+	Ctx,
+	Input,
+	Mutation,
+	Query,
+	Router,
+	UseMiddlewares,
+} from "nestjs-trpc";
 import type { z } from "zod";
+import type { AuthedTrpcContext } from "../trpc/context.types";
 import { AuthMiddleware } from "../trpc/middlewares/auth.middleware";
 import { restMeta } from "../trpc/openapi";
 import {
@@ -42,8 +57,71 @@ export class SettingsRouter {
 		output: agentModelOutput,
 		meta: restMeta("PATCH", "/settings/agent-model", ["Settings"]),
 	})
-	async setAgentModel(@Input() input: z.infer<typeof setAgentModelInput>) {
-		return this.settings.setAgentModel(input.modelId);
+	async setAgentModel(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof setAgentModelInput>,
+	) {
+		return this.settings.setAgentModel(ctx.user.id, input.modelId);
+	}
+
+	@Query({
+		output: aiProvidersOutput,
+		meta: restMeta("GET", "/settings/ai-providers", ["Settings"]),
+	})
+	async aiProviders(@Ctx() ctx: AuthedTrpcContext) {
+		return this.settings.aiProviders(ctx.user.id);
+	}
+
+	@Mutation({
+		input: setAiProviderModeInput,
+		output: aiProvidersOutput,
+		meta: restMeta("PATCH", "/settings/ai-providers/mode", ["Settings"]),
+	})
+	async setAiProviderMode(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof setAiProviderModeInput>,
+	) {
+		return this.settings.setAiProviderMode(ctx.user.id, input.mode);
+	}
+
+	@Mutation({
+		input: saveAiProviderKeyInput,
+		output: aiProvidersOutput,
+		meta: restMeta("PUT", "/settings/ai-providers/key", ["Settings"]),
+	})
+	async saveAiProviderKey(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof saveAiProviderKeyInput>,
+	) {
+		return this.settings.saveAiProviderKey(
+			ctx.user.id,
+			input.provider,
+			input.apiKey,
+		);
+	}
+
+	@Mutation({
+		input: aiProviderInput,
+		output: aiProvidersOutput,
+		meta: restMeta("DELETE", "/settings/ai-providers/key", ["Settings"]),
+	})
+	async removeAiProviderKey(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof aiProviderInput>,
+	) {
+		return this.settings.removeAiProviderKey(ctx.user.id, input.provider);
+	}
+
+	@Mutation({
+		input: aiProviderInput,
+		output: aiProviderTestOutput,
+		meta: restMeta("POST", "/settings/ai-providers/test", ["Settings"]),
+	})
+	async testAiProviderKey(
+		@Ctx() ctx: AuthedTrpcContext,
+		@Input() input: z.infer<typeof aiProviderInput>,
+	) {
+		return this.settings.testAiProviderKey(ctx.user.id, input.provider);
 	}
 
 	@Query({
