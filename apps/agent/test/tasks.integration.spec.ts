@@ -199,6 +199,54 @@ describe("retireExhausted", () => {
 		});
 		expect(open).toBe(0);
 	});
+
+	it("keeps the retirement limit when PostgreSQL uses nested loops", async () => {
+		const mine = Array.from({ length: 3 }, (_, row) => `${kind}-limit-${row}`);
+		await db.agentTask.createMany({
+			data: mine.map((id, row) => ({
+				id,
+				kind,
+				reason: "test",
+				dueAt: new Date(Date.now() - (mine.length - row) * 1000),
+				attempts: MAX_ATTEMPTS,
+			})),
+		});
+
+		const retired = await db.$transaction(async (tx) => {
+			await tx.$executeRaw`SET LOCAL enable_hashjoin = off`;
+			await tx.$executeRaw`SET LOCAL enable_mergejoin = off`;
+			await tx.$executeRaw`SET LOCAL enable_material = off`;
+			await tx.$executeRaw`SET LOCAL enable_hashagg = off`;
+			await tx.$executeRaw`SET LOCAL enable_sort = off`;
+			await tx.$executeRaw`SET LOCAL enable_seqscan = off`;
+			return retireExhausted(2, tx);
+		});
+
+		expect(retired.map((task) => task.id).sort()).toEqual(mine.slice(0, 2));
+		expect(
+			await db.agentTask.count({
+				where: { id: { in: mine }, finishedAt: null },
+			}),
+		).toBe(1);
+	});
+
+	it("does not hand the same retired row to two reconcilers", async () => {
+		const mine = await Promise.all([queue(), queue(), queue(), queue()]);
+		await db.agentTask.updateMany({
+			where: { id: { in: mine.map((task) => task.id) } },
+			data: { attempts: MAX_ATTEMPTS },
+		});
+
+		const [first, second] = await Promise.all([
+			retireExhausted(2),
+			retireExhausted(2),
+		]);
+		expect(first).toHaveLength(2);
+		expect(second).toHaveLength(2);
+		expect([...first, ...second].map((task) => task.id).sort()).toEqual(
+			mine.map((task) => task.id).sort(),
+		);
+	});
 });
 
 describe("completeTask", () => {
