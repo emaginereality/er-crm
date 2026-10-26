@@ -98,6 +98,14 @@ its sub-select's `ORDER BY`.
 
 ### Dispatch on demand
 
+`CRM_BACKGROUND_DISPATCH_PAUSED=1` pauses scheduled dispatch, all three dispatch routes, and queued CRM channel targets.
+The guard preserves queued tasks, builder submissions, and deployed runs without claiming or retiring them.
+Internal routes still require authentication and return `{ "paused": true, "dispatched": false }` while paused.
+Dispatch health reports `paused` and the current backlog. The pause does not hide a stalled active sweep.
+Native interactive Eve chat, tools, and authentication remain unchanged.
+Existing sessions continue. This guard is not a cancellation mechanism or a model spending limit.
+Unset, empty, or `0` values preserve normal behavior. Other configured values fail closed.
+
 `POST /internal/crm/dispatch` drains **both lanes**; `AgentTriggerService.poke()` calls
 it after writing any `AgentTask`.
 

@@ -114,6 +114,20 @@ Other configured values fail closed.
 This variable does not configure daemon permissions or resource limits.
 The deployment must provide an isolated daemon and verify its boundary separately.
 
+## Background dispatch pause
+
+`CRM_BACKGROUND_DISPATCH_PAUSED=1` pauses the scheduled dispatcher and all three internal dispatch routes.
+The CRM channel also rejects queued dispatch targets while paused.
+Authentication still runs before each HTTP or channel pause guard.
+Unset, empty, and `0` values preserve normal dispatch. Other values fail closed.
+The agent reads this variable. The API does not read it.
+The authenticated dispatch-health response includes `paused` and still reports queued tasks.
+Paused dispatch logs contain no credentials or queued message contents.
+The pause preserves queued rows without claiming, retiring, recovering, or deleting them.
+Native interactive Eve chat and its tools remain available.
+The pause does not cancel existing sessions or enforce a model spending limit.
+Staging sets `1` explicitly. Other deployments remain unchanged unless they set this variable.
+
 ## AI provider key encryption
 
 `AI_PROVIDER_ENCRYPTION_KEY` encrypts OpenAI and Anthropic keys saved by workspace administrators.

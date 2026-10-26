@@ -6,6 +6,10 @@ import { aiProviderInput } from "@crm/validation/ai-providers";
 import { eveTurnFailure } from "@crm/validation/eve-stream";
 import { type ChannelFrom, defineChannel, GET, POST } from "eve/channels";
 import { z } from "zod";
+import {
+	backgroundDispatchPaused,
+	skipPausedBackgroundDispatch,
+} from "../lib/background-dispatch";
 import { persistBuilderInputRequest } from "../lib/builder-input";
 import { verifyKey } from "../lib/context-dev";
 import {
@@ -143,6 +147,7 @@ export default defineChannel({
 			}
 
 			const health = dispatchHealth();
+			const paused = backgroundDispatchPaused();
 			const { db } = await import("@crm/db");
 			const now = new Date();
 			const overdue = await db.agentTask.count({
@@ -155,20 +160,25 @@ export default defineChannel({
 			});
 
 			const wedged = health.stalledMs > DRAIN_TIMEOUT_MS;
+			const ok = !wedged && (paused || overdue === 0);
 			return Response.json(
 				{
-					ok: !wedged && overdue === 0,
+					ok,
+					paused,
 					wedged,
 					overdueTasks: overdue,
 					...health,
 				},
-				{ status: wedged || overdue > 0 ? 503 : 200 },
+				{ status: ok ? 200 : 503 },
 			);
 		}),
 
 		POST("/internal/crm/dispatch", async (request, { from, waitUntil }) => {
 			if (!authorised(request)) {
 				return new Response("Unauthorized", { status: 401 });
+			}
+			if (skipPausedBackgroundDispatch()) {
+				return Response.json({ paused: true, dispatched: false });
 			}
 
 			const send = sender(from);
@@ -194,6 +204,9 @@ export default defineChannel({
 				if (!authorised(request)) {
 					return new Response("Unauthorized", { status: 401 });
 				}
+				if (skipPausedBackgroundDispatch()) {
+					return Response.json({ paused: true, dispatched: false });
+				}
 
 				waitUntil(drainBuilder(sender(from)));
 				return new Response(null, { status: 202 });
@@ -205,6 +218,9 @@ export default defineChannel({
 			async (request, { from, waitUntil }) => {
 				if (!authorised(request)) {
 					return new Response("Unauthorized", { status: 401 });
+				}
+				if (skipPausedBackgroundDispatch()) {
+					return Response.json({ paused: true, dispatched: false });
 				}
 
 				waitUntil(drainAgentRuns(sender(from)));
@@ -447,15 +463,20 @@ export default defineChannel({
 	},
 
 	async receive(input, { from }) {
-		const send = sender(from);
 		const target = receiveTarget.parse(input.target);
-		if (target.builderSubmissionId) {
+		if (target.builderSubmissionId || target.runId || target.taskId) {
 			assertInternalDispatchAuth(input.auth);
+			if (skipPausedBackgroundDispatch()) {
+				throw new Error("Background dispatch is paused.");
+			}
+		}
+
+		const send = sender(from);
+		if (target.builderSubmissionId) {
 			return dispatchBuilderSubmission(target.builderSubmissionId, send);
 		}
 
 		if (target.runId) {
-			assertInternalDispatchAuth(input.auth);
 			return dispatchAgentRun(target.runId, send);
 		}
 
