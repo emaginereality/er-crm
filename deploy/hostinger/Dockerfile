@@ -42,6 +42,6 @@ USER node
 
 FROM agent-runtime AS agent-builder
 USER root
-RUN mkdir -p /srv/crm/apps/agent/node_modules/.cache/eve /run/crm-agent-output && \
-    chown node:node /srv/crm/apps/agent /srv/crm/apps/agent/node_modules/.cache/eve /run/crm-agent-output
+RUN mkdir -p /srv/crm/apps/agent/node_modules/.cache/eve /srv/crm/apps/agent/node_modules/.nitro /run/crm-agent-output && \
+    chown node:node /srv/crm/apps/agent /srv/crm/apps/agent/node_modules/.cache/eve /srv/crm/apps/agent/node_modules/.nitro /run/crm-agent-output
 USER node
