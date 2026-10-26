@@ -1,6 +1,8 @@
 import contextlib
 import io
 import pathlib
+import subprocess
+import tempfile
 import types
 import unittest
 from unittest.mock import patch
@@ -48,6 +50,46 @@ class RangeValidationTests(unittest.TestCase):
     def test_short_allocation_fails(self):
         with self.assertRaisesRegex(SystemExit, "No usable sandbox allocation"):
             self.validate("crm-sandbox:100000:100\n")
+
+
+class SocketValidationTests(unittest.TestCase):
+    def validate(self, mode, group):
+        start = SCRIPT.index("socket_group=$(stat")
+        end = SCRIPT.index("security=$(as_sandbox", start)
+        section = SCRIPT[start:end]
+        with tempfile.TemporaryDirectory() as directory:
+            ranges = pathlib.Path(directory) / "subgid"
+            ranges.write_text("crm-sandbox:100000:65536\n")
+            section = section.replace("/etc/subgid", str(ranges))
+            prefix = f"""set -e
+account=crm-sandbox
+account_id=2001
+socket=/fixture
+fail() {{ exit 3; }}
+stat() {{
+  case "$2" in
+    %g) printf '%s' '{group}' ;;
+    %a) printf '%s' '{mode}' ;;
+    *) exit 4 ;;
+  esac
+}}
+"""
+            return subprocess.run(["bash", "-c", prefix + section], check=False).returncode
+
+    def test_private_socket_with_sticky_bit_passes(self):
+        self.assertEqual(self.validate("1660", 100987), 0)
+
+    def test_private_socket_without_sticky_bit_passes(self):
+        self.assertEqual(self.validate("660", 2001), 0)
+
+    def test_world_access_fails(self):
+        self.assertNotEqual(self.validate("1666", 100987), 0)
+
+    def test_setgid_socket_fails(self):
+        self.assertNotEqual(self.validate("2660", 100987), 0)
+
+    def test_unallocated_socket_group_fails(self):
+        self.assertNotEqual(self.validate("1660", 1000), 0)
 
 
 if __name__ == "__main__":

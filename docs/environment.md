@@ -244,3 +244,12 @@ is sent. No client is constructed, so there is no queue waiting to flush later.
 - **Redis** — optional; without `REDIS_URL` the cache is per-instance in-memory, which
   is wrong for multi-instance.
 - **Sign-in method** — Google and Microsoft are in code; an IdP is a row (SSO, in `api.md`).
+
+
+## Hostinger agent daemon
+
+The staging agent uses `DOCKER_HOST=unix:///run/crm-sandbox/docker.sock`.
+Its entrypoint verifies rootless mode and systemd cgroups before build or startup.
+`CRM_SANDBOX_SOCKET_GID` is deployment metadata for the verified private socket group.
+It grants a supplementary group only inside the agent and its build container.
+It does not grant host Docker access or change any host account membership.

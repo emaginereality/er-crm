@@ -4,8 +4,8 @@
 
 This is a staging foundation, not a complete CRM deployment.
 It builds the web application and API, then prepares private PostgreSQL storage.
-It does not deploy the Eve agent.
-Native AI acceptance remains blocked until the sandbox setup passes verification.
+The optional agent overlay builds and starts the native Eve agent.
+Native AI acceptance remains blocked until the rootless agent workflow and host sandbox checks pass.
 Do not report this foundation as an AI-ready CRM.
 
 The staging project uses synthetic CRM records only.
@@ -286,3 +286,48 @@ The following gates remain mandatory:
    Fix: approve the provider account, model, and test cost limit.
 5. UNKNOWN — Named-volume ownership and final routing require Docker runtime verification.
    Fix: inspect container startup and complete the acceptance gates before release.
+
+## Native agent overlay
+
+Use `compose.yaml` together with `compose.agent.yaml` only after rootless runtime verification.
+The overlay requires `CRM_SANDBOX_SOCKET_GID`, copied from the verified host socket metadata.
+This is a container-only supplementary group, not a host account membership change.
+Docker can map its socket group into the dedicated subordinate GID range.
+The socket can retain mode `1660`; its sticky bit is expected on this Docker release.
+Never widen its permissions or the parent runtime directory.
+
+The approved console must run the reviewed `resource-setup.sh` once.
+It creates only `/srv/crm/apps/agent/.eve`, with UID1000, GID2001, and mode2750.
+It refuses an existing parent instead of replacing unknown data.
+The path carries compiled, non-secret sandbox resources during the build.
+Eve and its rootless daemon see the same absolute resource path.
+The build service mounts no database, authentication, provider, or chat secret volume.
+
+`agent-build` runs a complete `eve build` against the private daemon.
+It does not skip sandbox preparation.
+The root, builder, and runner explicitly select Docker with deny-all live networking.
+A Docker failure cannot select microsandbox or just-bash in this mode.
+Eve prepares trusted template images with temporary outbound access.
+Live session containers start with network mode `none`.
+The framework sandbox image remains `ghcr.io/vercel/eve:0.69.0`.
+The application image pins Node24.22.1 and the Docker29.9.2 CLI digest.
+
+The runtime receives its generated output through a source-specific named volume.
+Its separate named state volume persists `.eve/.workflow-data`.
+Only the agent and its build service receive the private rootless socket.
+Neither receives the host rootful Docker socket.
+Session sandboxes receive neither socket nor application secret mounts or environment values.
+The agent has no public route or published port.
+The app and API reach it on the private backend network with existing bridge authentication.
+
+The rootless agent workflow uses a disposable runner account and synthetic secrets.
+It builds all three prepared environments, checks native provider execution and resume,
+and verifies no sandbox network, host mounts, application credentials, or anonymous agent access.
+It invokes no model and provides no real integration credentials.
+It removes Compose resources, the rootless account, and resource files after the test.
+A passing workflow is not a browser sign-in, CRM record flow, or paid AI acceptance test.
+
+A daemon restart replaces its Unix socket inode.
+Recreate the agent containers after that restart; restarting their processes alone is insufficient.
+Host reboot ordering and recovery remain explicit staging acceptance checks.
+Do not delete state, database, or secret volumes during recovery.

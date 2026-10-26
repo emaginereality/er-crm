@@ -1,9 +1,22 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { secretFormats } from "./bootstrap.mjs";
+import { verifyRootlessDaemon } from "./sandbox-daemon.mjs";
 
 const role = process.argv[2];
 const commands = {
+	agent: {
+		directory: "apps/agent",
+		args: [
+			"node_modules/eve/bin/eve.js",
+			"start",
+			"--host",
+			"0.0.0.0",
+			"--port",
+			"2000",
+		],
+		secrets: ["auth", "bridge", "provider", "chat"],
+	},
 	api: {
 		directory: "apps/api",
 		args: ["dist/main.js"],
@@ -27,7 +40,7 @@ const secretNames = {
 	chat: "CHAT_EVENT_ENCRYPTION_KEY",
 };
 const command = commands[role];
-if (!command) throw new Error("Select app, api, or migrate.");
+if (!command) throw new Error("Select app, api, agent, or migrate.");
 if (
 	role !== "migrate" &&
 	!/^[^\s,@]+@[^\s,@]+$/.test(process.env.ALLOWED_SIGN_IN ?? "")
@@ -53,6 +66,8 @@ const environment = {
 };
 for (const kind of command.secrets)
 	environment[secretNames[kind]] = await readSecret(kind);
+
+if (role === "agent") await verifyRootlessDaemon();
 
 const child = spawn("bun", command.args, {
 	cwd: `/srv/crm/${command.directory}`,

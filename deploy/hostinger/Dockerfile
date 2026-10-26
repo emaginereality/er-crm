@@ -1,3 +1,4 @@
+FROM docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb AS docker-cli
 FROM oven/bun:1.4.0 AS bun
 FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS build
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
@@ -30,3 +31,10 @@ RUN mkdir -p /run/crm-secrets/database /run/crm-secrets/auth /run/crm-secrets/br
     chown -R node:node /run/crm-secrets /srv/crm/apps/app/.next
 USER node
 ENTRYPOINT ["bun", "deploy/hostinger/start.mjs"]
+
+FROM runtime AS agent-runtime
+USER root
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+RUN mkdir -p /srv/crm/apps/agent/.output /srv/crm/apps/agent/.eve && \
+    chown -R node:node /srv/crm/apps/agent/.output /srv/crm/apps/agent/.eve
+USER node

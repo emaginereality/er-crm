@@ -110,14 +110,24 @@ systemctl set-property "user-$account_id.slice" MemoryMax=2G CPUQuota=100% Tasks
 socket=$runtime/docker.sock
 [[ -S $socket ]] || fail 'The private rootless socket is absent.'
 [[ $(stat -c '%u' "$socket") == "$account_id" ]] || fail 'The private socket has the wrong owner.'
-[[ $(stat -c '%a' "$socket") == 660 ]] || fail 'The private socket has unexpected permissions.'
+socket_group=$(stat -c '%g' "$socket")
+if [[ $socket_group != "$account_id" ]]; then
+  awk -F: -v account="$account" -v account_id="$account_id" -v socket_group="$socket_group" '
+    ($1 == account || $1 == account_id) && socket_group >= $2 && socket_group < $2 + $3 { found = 1 }
+    END { exit !found }
+  ' /etc/subgid || fail 'The private socket group is outside the isolated sandbox allocation.'
+fi
+case $(stat -c '%a' "$socket") in
+  660|1660) ;;
+  *) fail 'The private socket has unexpected permissions.' ;;
+esac
 security=$(as_sandbox docker --host "unix://$socket" info --format '{{json .SecurityOptions}}')
 grep -q rootless <<< "$security" || fail 'The sandbox daemon does not report rootless mode.'
 [[ $(as_sandbox docker --host "unix://$socket" info --format '{{.CgroupDriver}}') == systemd ]] || fail 'The sandbox daemon lacks systemd cgroup support.'
 [[ $(rootful info --format '{{.ID}}') == "$rootful_id" ]] || fail 'The rootful Docker daemon identity changed.'
 [[ $(sysctl -n kernel.apparmor_restrict_unprivileged_userns) == 1 ]] || fail 'System-wide namespace restrictions changed.'
 printf '\nRootless service is ready for sandbox verification.\n'
-printf 'Account: %s; UID/GID: %s; private socket: %s\n' "$account" "$account_id" "$socket"
+printf 'Account: %s; UID/GID: %s; socket GID: %s; private socket: %s\n' "$account" "$account_id" "$socket_group" "$socket"
 printf 'No application secrets, SSH keys, published daemon ports, or sandbox containers are created.\n'
 printf 'Docker CE versions, daemon identity, and namespace restrictions pass verification.\n'
 printf 'This script executes no firewall or Traefik configuration command.\n'

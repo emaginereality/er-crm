@@ -5,6 +5,7 @@ x-image: &image
   build:
     context: https://github.com/emaginereality/er-crm.git#${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
     dockerfile: deploy/hostinger/Dockerfile
+    target: runtime
     args:
       STAGING_ORIGIN: https://${STAGING_HOSTNAME:?Set the approved staging hostname}
 
