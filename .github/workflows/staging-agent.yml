@@ -87,7 +87,7 @@ jobs:
         if: failure()
         run: |
           sudo journalctl --no-pager --lines 100 _UID=2001 _SYSTEMD_USER_UNIT=docker.service
-          sudo journalctl --kernel --no-pager --lines 60 --grep='apparmor.*crm-ci|rootlesskit|userns' || true
+          sudo journalctl -k --no-pager --lines 60 --grep='apparmor.*crm-ci|rootlesskit|userns' || true
           if sudo test -S /run/user/2001/bus; then
             sudo runuser -u crm-sandbox -- env -i HOME=/var/lib/crm-sandbox PATH=/opt/crm-ci-docker-29.9.2/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/2001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/2001/bus systemctl --user show docker.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus
           fi

@@ -140,6 +140,16 @@ runtime=/run/user/$account_id
 as_sandbox() {
   runuser -u "$account" -- env -i HOME="$home" USER="$account" LOGNAME="$account" PATH="$prefix/bin:/usr/bin:/bin" XDG_RUNTIME_DIR="$runtime" DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" "$@"
 }
+as_sandbox mkdir -p "$home/.config/systemd/user/docker.service.d"
+as_sandbox tee "$home/.config/systemd/user/docker.service.d/identity.conf" >/dev/null <<SERVICE
+[Service]
+Environment=HOME=$home
+Environment=USER=$account
+Environment=LOGNAME=$account
+Environment=XDG_RUNTIME_DIR=$runtime
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus
+SERVICE
+as_sandbox systemctl --user daemon-reload
 as_sandbox "$prefix/bin/dockerd-rootless-setuptool.sh" install --force
 as_sandbox systemctl --user enable --now docker.service
 systemctl set-property "user-$account_id.slice" MemoryMax=2G CPUQuota=100% TasksMax=512

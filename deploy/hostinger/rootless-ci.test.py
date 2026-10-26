@@ -58,6 +58,19 @@ class RootlessCiTests(unittest.TestCase):
         self.assertIn("sha256sum --check --strict -", SOURCE)
         self.assertIn("29.9.2/29.9.2", SOURCE)
 
+    def test_private_service_environment_is_set_before_install(self):
+        expected = """[Service]
+Environment=HOME=$home
+Environment=USER=$account
+Environment=LOGNAME=$account
+Environment=XDG_RUNTIME_DIR=$runtime
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus"""
+        self.assertEqual(section(SOURCE, "<<SERVICE\n", "\nSERVICE"), expected)
+        self.assertIn('as_sandbox mkdir -p "$home/.config/systemd/user/docker.service.d"', SOURCE)
+        self.assertIn('as_sandbox tee "$home/.config/systemd/user/docker.service.d/identity.conf"', SOURCE)
+        self.assertLess(SOURCE.index("<<SERVICE"), SOURCE.index('dockerd-rootless-setuptool.sh" install'))
+        self.assertIn('runtime=/run/user/$account_id', SOURCE)
+
     def test_shell_syntax(self):
         subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
 
