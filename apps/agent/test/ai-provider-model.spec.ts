@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { readFileSync } from "node:fs";
-import { db } from "@crm/db";
 import { DIRECT_AI_MODELS } from "@crm/validation/ai-providers";
 import { generateText, streamText } from "ai";
 import eveChannel from "../agent/channels/eve";
@@ -95,12 +94,13 @@ describe("AI provider session routing", () => {
 	});
 
 	it("fails closed when settings cannot be read", async () => {
-		spyOn(db, "$transaction").mockRejectedValue(
-			new Error("private database details"),
-		);
-		await expect(selectedModel()).rejects.toThrow(
-			"No provider request was sent",
-		);
+		const readSettings = mock(async () => {
+			throw new Error("private database details");
+		});
+		const result = selectedModel(undefined, readSettings);
+		await expect(result).rejects.toThrow("No provider request was sent");
+		await expect(result).rejects.not.toThrow("private database details");
+		expect(readSettings).toHaveBeenCalledTimes(1);
 	});
 
 	it("rechecks the key on each step, including after rotation and removal", async () => {
