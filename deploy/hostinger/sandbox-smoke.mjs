@@ -100,6 +100,26 @@ const bridge = await fetch(
 	},
 );
 assert.equal(bridge.status, 401);
+const bridgeSecret = (
+	await readFile("/run/crm-secrets/bridge/value", "utf8")
+).trim();
+const authorization = `Bearer ${bridgeSecret}`;
+const dispatchHealth = await fetch(
+	"http://agent:2000/internal/crm/dispatch-health",
+	{
+		headers: { authorization },
+	},
+);
+assert.equal(dispatchHealth.status, 200);
+assert.equal((await dispatchHealth.json()).paused, true);
+for (const route of ["dispatch", "builder-dispatch", "agent-dispatch"]) {
+	const paused = await fetch(`http://agent:2000/internal/crm/${route}`, {
+		method: "POST",
+		headers: { authorization },
+	});
+	assert.equal(paused.status, 200);
+	assert.deepEqual(await paused.json(), { paused: true, dispatched: false });
+}
 console.log(
-	"Agent health, anonymous denial, three prepared agent environments, isolated sandbox execution, and sandbox resume pass. No model call runs.",
+	"Agent health, anonymous denial, three prepared agent environments, isolated sandbox execution, sandbox resume, and background-dispatch pause pass. No model call runs.",
 );

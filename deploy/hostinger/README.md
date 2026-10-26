@@ -171,7 +171,12 @@ https://<staging-hostname>/api/auth/callback/google
 Use the staging origin for `APP_URL` and `API_URL`.
 No second API hostname or broad cookie domain is required.
 The user reviews Google consent directly.
-Do not import real mailbox data during synthetic-record validation.
+Consent stores the granted login and refresh credentials; it is separate from running a sync.
+The current sign-in hook does not fetch mailbox or calendar contents.
+The authenticated connection page's “Check now” action starts a sync.
+The internal cron endpoint also starts sync, but staging leaves `CRON_SECRET` unset.
+The staging proxy does not expose internal sync routes.
+Do not click “Check now” or import real mailbox data during synthetic-record validation.
 
 After the agent passes verification, the user enters provider keys in Settings → General over HTTPS.
 Saving a key does not authorize a paid model call.
@@ -373,3 +378,21 @@ The sandbox probe also attempts TCP access to a reserved documentation address a
 The runner restarts only its private daemon, then recreates the agent to bind the new socket inode.
 A synthetic state marker and sandbox resume checks verify storage and socket recovery.
 This does not verify a paid model turn or complete workflow resumption.
+
+
+## Staging cost-control pause
+
+The agent overlay sets `CRM_BACKGROUND_DISPATCH_PAUSED=1`.
+It pauses scheduled background work and all three authenticated dispatch routes.
+It also blocks structured queued task, builder, and run targets through the CRM channel.
+Queued rows remain stored. The pause does not delete records or cancel existing sessions.
+The authenticated dispatch health response reports `paused: true`.
+Native interactive chat and its tools remain available; authentication stays unchanged.
+Background workflow acceptance remains incomplete until an explicitly approved unpause test.
+
+Before secure provider-key entry, obtain the user's provider, model, test-scope, and budget approval.
+Inspect queued work and active sessions first. Do not clear a queue silently.
+A working key can enable already-running sessions; the pause does not cancel those sessions.
+Keep background dispatch paused during an approved single interactive AI test.
+Key storage alone does not authorize paid processing or backlog execution.
+All automated staging tests omit real provider keys and make no model call.

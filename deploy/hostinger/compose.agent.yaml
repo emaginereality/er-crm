@@ -10,6 +10,7 @@ x-agent-image: &agent-image
 x-sandbox-access: &sandbox-access
   DOCKER_HOST: unix:///run/crm-sandbox/docker.sock
   CRM_SANDBOX_PROVIDER: docker
+  CRM_BACKGROUND_DISPATCH_PAUSED: "1"
   CRM_TELEMETRY_DISABLED: "1"
   NEXT_TELEMETRY_DISABLED: "1"
 
@@ -58,6 +59,7 @@ services:
       APP_URL: https://${STAGING_HOSTNAME}
       API_URL: https://${STAGING_HOSTNAME}
       AGENT_URL: http://agent:2000
+      PORT: "2000"
       ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?Set the approved single staging email}
     depends_on:
       migrate:
