@@ -17,6 +17,7 @@ jobs:
   conventional:
     name: conventional commit
     if: >-
+      github.repository == 'trycompai/crm' &&
       github.event.pull_request.draft == false &&
       !startsWith(github.event.pull_request.head.ref, 'release-please--')
     runs-on: ubuntu-24.04

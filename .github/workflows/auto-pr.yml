@@ -20,6 +20,7 @@ permissions:
 jobs:
   open:
     name: Open a pull request into main
+    if: github.repository == 'trycompai/crm'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
