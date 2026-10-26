@@ -302,7 +302,8 @@ The socket can retain mode `1660`; its sticky bit is expected on this Docker rel
 Never widen its permissions or the parent runtime directory.
 
 The approved console must run the reviewed `resource-setup.sh` once.
-It creates only `/srv/crm/apps/agent/.eve`, with UID1000, GID2001, and mode2750.
+It creates `/srv/crm/apps/agent/.eve/sandbox-cache`, with UID1000, GID2001, and mode2750.
+Its parent directories contain no credentials.
 It refuses an existing parent instead of replacing unknown data.
 The path carries compiled, non-secret sandbox resources during the build.
 Eve and its rootless daemon see the same absolute resource path.
@@ -317,7 +318,14 @@ Live session containers start with network mode `none`.
 The framework sandbox image remains `ghcr.io/vercel/eve:0.69.0`.
 The application image pins Node24.22.1 and the Docker29.9.2 CLI digest.
 
-The runtime receives its generated output through a source-specific named volume.
+Eve builds in the separate, non-root builder image.
+Its compiler workspace and output share one filesystem for atomic publication.
+Only the sandbox cache uses the secret-free host bind.
+The builder copies completed output into a source-specific named volume after the build succeeds.
+It publishes only into an empty output volume and writes its source marker last.
+It reuses complete matching-source output without overwriting a running agent.
+It refuses unknown, incomplete, or different-source output.
+The runtime mounts this volume read-only and retains root-owned source files.
 Its separate named state volume persists `.eve/.workflow-data`.
 Only the agent and its build service receive the private rootless socket.
 Neither receives the host rootful Docker socket.

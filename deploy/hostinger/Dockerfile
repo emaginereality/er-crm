@@ -33,8 +33,15 @@ USER node
 ENTRYPOINT ["bun", "deploy/hostinger/start.mjs"]
 
 FROM runtime AS agent-runtime
+ENV EVE_TELEMETRY_DISABLED=1
 USER root
 COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN mkdir -p /srv/crm/apps/agent/.output /srv/crm/apps/agent/.eve && \
     chown -R node:node /srv/crm/apps/agent/.output /srv/crm/apps/agent/.eve
+USER node
+
+FROM agent-runtime AS agent-builder
+USER root
+RUN mkdir -p /srv/crm/apps/agent/node_modules/.cache/eve /run/crm-agent-output && \
+    chown node:node /srv/crm/apps/agent /srv/crm/apps/agent/node_modules/.cache/eve /run/crm-agent-output
 USER node

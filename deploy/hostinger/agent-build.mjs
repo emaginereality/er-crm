@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { publishAgentOutput } from "./agent-output.mjs";
 import { verifyRootlessDaemon } from "./sandbox-daemon.mjs";
 
 await verifyRootlessDaemon();
@@ -16,10 +17,15 @@ const child = spawn("bun", ["run", "build"], {
 });
 for (const signal of ["SIGINT", "SIGTERM"])
 	process.once(signal, () => child.kill(signal));
-child.once("error", () => {
-	console.error("The isolated agent build failed to start.");
-	process.exitCode = 1;
+await new Promise((resolve, reject) => {
+	child.once("error", reject);
+	child.once("exit", (code) => {
+		if (code === 0) resolve();
+		else reject(new Error(`The isolated agent build exits with code ${code}.`));
+	});
 });
-child.once("exit", (code) => {
-	process.exitCode = code ?? 1;
-});
+await publishAgentOutput(
+	"/srv/crm/apps/agent/.output",
+	"/run/crm-agent-output",
+	process.argv[2],
+);

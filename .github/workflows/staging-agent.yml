@@ -42,6 +42,7 @@ jobs:
         run: |
           python3 deploy/hostinger/rootless-ranges.test.py
           python3 deploy/hostinger/rootless-ci.test.py
+          node --test deploy/hostinger/agent-output.test.mjs
       - name: Prepare the disposable rootless runtime
         run: |
           ! getent passwd crm-sandbox || exit 1

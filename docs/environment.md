@@ -267,3 +267,6 @@ Its entrypoint verifies rootless mode and systemd cgroups before build or startu
 `CRM_SANDBOX_SOCKET_GID` is deployment metadata for the verified private socket group.
 It grants a supplementary group only inside the agent and its build container.
 It does not grant host Docker access or change any host account membership.
+
+Eve has a separate telemetry switch: `EVE_TELEMETRY_DISABLED=1`.
+The staging builder and agent set it explicitly. Unset or empty keeps Eve’s default behavior.

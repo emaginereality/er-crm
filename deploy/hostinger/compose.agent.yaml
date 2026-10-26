@@ -1,6 +1,6 @@
 x-agent-image: &agent-image
   image: crm-staging-agent:${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
-  build:
+  build: &agent-build-config
     context: https://github.com/emaginereality/er-crm.git#${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
     dockerfile: deploy/hostinger/Dockerfile
     target: agent-runtime
@@ -12,6 +12,7 @@ x-sandbox-access: &sandbox-access
   CRM_SANDBOX_PROVIDER: docker
   CRM_BACKGROUND_DISPATCH_PAUSED: "1"
   CRM_TELEMETRY_DISABLED: "1"
+  EVE_TELEMETRY_DISABLED: "1"
   NEXT_TELEMETRY_DISABLED: "1"
 
 x-sandbox-socket: &sandbox-socket
@@ -24,7 +25,11 @@ x-sandbox-socket: &sandbox-socket
 services:
   agent-build:
     <<: *agent-image
-    entrypoint: ["bun", "deploy/hostinger/agent-build.mjs"]
+    image: crm-staging-agent-builder:${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
+    build:
+      <<: *agent-build-config
+      target: agent-builder
+    entrypoint: ["bun", "deploy/hostinger/agent-build.mjs", "${CRM_SOURCE_SHA}"]
     restart: "no"
     init: true
     group_add: ["${CRM_SANDBOX_SOCKET_GID:?Set the verified rootless socket group}"]
@@ -36,11 +41,11 @@ services:
     volumes:
       - *sandbox-socket
       - type: bind
-        source: /srv/crm/apps/agent/.eve
-        target: /srv/crm/apps/agent/.eve
+        source: /srv/crm/apps/agent/.eve/sandbox-cache
+        target: /srv/crm/apps/agent/.eve/sandbox-cache
         bind:
           create_host_path: false
-      - agent-output:/srv/crm/apps/agent/.output
+      - agent-output:/run/crm-agent-output
     networks: [backend]
 
   agent:
