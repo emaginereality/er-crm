@@ -1,0 +1,146 @@
+name: crm-staging
+
+x-image: &image
+  image: crm-staging:${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
+  build:
+    context: https://github.com/emaginereality/er-crm.git#${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
+    dockerfile: deploy/hostinger/Dockerfile
+    args:
+      STAGING_ORIGIN: https://${STAGING_HOSTNAME:?Set the approved staging hostname}
+
+x-environment: &environment
+  NODE_ENV: production
+  APP_URL: https://${STAGING_HOSTNAME:?Set the approved staging hostname}
+  API_URL: https://${STAGING_HOSTNAME:?Set the approved staging hostname}
+  ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?Set the approved single staging email}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  CRM_TELEMETRY_DISABLED: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+x-runtime: &runtime
+  <<: *image
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  pids_limit: 256
+  networks:
+    - backend
+
+services:
+  secrets-init:
+    <<: *image
+    entrypoint: ["bun", "deploy/hostinger/bootstrap.mjs"]
+    restart: "no"
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - database-secret:/run/crm-secrets/database
+      - auth-secret:/run/crm-secrets/auth
+      - bridge-secret:/run/crm-secrets/bridge
+      - provider-secret:/run/crm-secrets/provider
+      - chat-secret:/run/crm-secrets/chat
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_DB: crm_staging
+      POSTGRES_PASSWORD_FILE: /run/crm-secrets/database/value
+    depends_on:
+      secrets-init:
+        condition: service_completed_successfully
+    volumes:
+      - database-secret:/run/crm-secrets/database:ro
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U crm -d crm_staging"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    <<: *runtime
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - database-secret:/run/crm-secrets/database:ro
+    environment:
+      NODE_ENV: production
+
+  api:
+    <<: *runtime
+    command: ["api"]
+    environment:
+      <<: *environment
+      PORT: "3001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - database-secret:/run/crm-secrets/database:ro
+      - auth-secret:/run/crm-secrets/auth:ro
+      - bridge-secret:/run/crm-secrets/bridge:ro
+      - provider-secret:/run/crm-secrets/provider:ro
+      - chat-secret:/run/crm-secrets/chat:ro
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:3001/health'); process.exit(r.ok ? 0 : 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.crm-staging-api.rule: Host(`${STAGING_HOSTNAME}`) && (PathPrefix(`/api/auth/`) || PathPrefix(`/api/trpc/`) || Path(`/api/trpc`))
+      traefik.http.routers.crm-staging-api.entrypoints: websecure
+      traefik.http.routers.crm-staging-api.tls.certresolver: letsencrypt
+      traefik.http.routers.crm-staging-api.priority: "100"
+      traefik.http.services.crm-staging-api.loadbalancer.server.port: "3001"
+
+  app:
+    <<: *runtime
+    command: ["app"]
+    environment: *environment
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - database-secret:/run/crm-secrets/database:ro
+      - auth-secret:/run/crm-secrets/auth:ro
+      - bridge-secret:/run/crm-secrets/bridge:ro
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:3000/sign-in'); process.exit(r.ok ? 0 : 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.crm-staging-app.rule: Host(`${STAGING_HOSTNAME}`)
+      traefik.http.routers.crm-staging-app.entrypoints: websecure
+      traefik.http.routers.crm-staging-app.tls.certresolver: letsencrypt
+      traefik.http.routers.crm-staging-app.priority: "10"
+      traefik.http.services.crm-staging-app.loadbalancer.server.port: "3000"
+
+networks:
+  backend:
+
+volumes:
+  postgres-data:
+  database-secret:
+  auth-secret:
+  bridge-secret:
+  provider-secret:
+  chat-secret:

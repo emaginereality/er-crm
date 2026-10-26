@@ -1,0 +1,17 @@
+services:
+  secrets-init:
+    build:
+      context: ../..
+  migrate:
+    build:
+      context: ../..
+  api:
+    build:
+      context: ../..
+    labels:
+      traefik.enable: "false"
+  app:
+    build:
+      context: ../..
+    labels:
+      traefik.enable: "false"
