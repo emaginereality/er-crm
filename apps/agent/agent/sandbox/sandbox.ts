@@ -1,10 +1,8 @@
-import { DefaultSandbox, defineSandbox } from "eve/sandbox";
-import { denySandboxNetwork } from "../lib/sandbox-network";
+import { defineSandbox } from "eve/sandbox";
+import { configuredSandbox } from "../lib/sandbox-environment";
 
-export const environment = DefaultSandbox.environment({
-	vercel: { networkPolicy: "deny-all" },
-});
+const sandbox = configuredSandbox();
 
-export default defineSandbox(async () =>
-	denySandboxNetwork(await environment.open()),
-);
+export const environment = sandbox.environment;
+
+export default defineSandbox(sandbox.open);

@@ -327,6 +327,12 @@ egress:
 
 ## Sandbox
 
+`agent/lib/sandbox-environment.ts` selects the same policy for root, builder, and runner sandboxes.
+Unset `CRM_SANDBOX_PROVIDER` preserves the existing DefaultSandbox behavior.
+Set `CRM_SANDBOX_PROVIDER=docker` during build and start to require Docker without fallback.
+Explicit Docker sessions deny network access at creation, before authored tools run.
+The deployment must verify rootless daemon isolation and resource limits separately.
+
 `agent/sandbox/sandbox.ts`: `bash`, file tools, `/workspace`, **`deny-all` egress on
 the backend factory** so it cannot be forgotten per session. Costs nothing —
 `web_fetch` runs in the app runtime, `web_search` at the provider.

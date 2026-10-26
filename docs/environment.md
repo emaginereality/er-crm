@@ -103,6 +103,17 @@ and lists every variable the API reads and nothing else.
   importing it (see the dynamic `import()` in `test/auth.e2e.spec.ts`).
 - **The schema is the API's, not the repo's** — `@crm/auth` and the agent read their own.
 
+## Agent sandbox provider
+
+`CRM_SANDBOX_PROVIDER=docker` selects Docker for the root, builder, and runner sandboxes.
+Set it during both the full Eve build and production start.
+Docker creates live sessions with `networkPolicy: "deny-all"`.
+An unavailable Docker daemon fails preparation or startup. No automatic provider fallback occurs.
+Unset or empty values preserve Eve's existing automatic provider selection.
+Other configured values fail closed.
+This variable does not configure daemon permissions or resource limits.
+The deployment must provide an isolated daemon and verify its boundary separately.
+
 ## AI provider key encryption
 
 `AI_PROVIDER_ENCRYPTION_KEY` encrypts OpenAI and Anthropic keys saved by workspace administrators.
