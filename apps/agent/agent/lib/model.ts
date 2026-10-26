@@ -66,22 +66,27 @@ export function selectModelRoute(
 	};
 }
 
+async function readModelSettings() {
+	return db.$transaction(
+		async (tx) => ({
+			providers: await readAiProviderSettings(tx),
+			model: await readAgentModel(tx),
+		}),
+		{ isolationLevel: "RepeatableRead" },
+	);
+}
+
 export async function selectedModel(
 	preferred?: ModelSelection,
+	readSettings: typeof readModelSettings = readModelSettings,
 ): Promise<ModelSelection> {
 	try {
-		return await db.$transaction(
-			async (tx) => {
-				const settings = await readAiProviderSettings(tx);
-				const configured = await readAgentModel(tx);
-				const selected = preferred ?? {
-					model: configured.id,
-					modelContextWindowTokens: configured.contextWindowTokens,
-				};
-				return selectModelRoute(settings, selected);
-			},
-			{ isolationLevel: "RepeatableRead" },
-		);
+		const settings = await readSettings();
+		const selected = preferred ?? {
+			model: settings.model.id,
+			modelContextWindowTokens: settings.model.contextWindowTokens,
+		};
+		return selectModelRoute(settings.providers, selected);
 	} catch (error) {
 		if (error instanceof AiModelConfigurationError) throw error;
 		throw new Error(
