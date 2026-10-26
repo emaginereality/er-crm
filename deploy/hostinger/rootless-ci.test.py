@@ -64,6 +64,11 @@ Environment=HOME=$home
 Environment=USER=$account
 Environment=LOGNAME=$account
 Environment=XDG_RUNTIME_DIR=$runtime
+Environment=XDG_CONFIG_HOME=$home/.config
+Environment=XDG_DATA_HOME=$home/.local/share
+Environment=XDG_CACHE_HOME=$home/.cache
+Environment=XDG_STATE_HOME=$home/.local/state
+Environment=DOCKER_CONFIG=$home/.docker
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus"""
         self.assertEqual(section(SOURCE, "<<SERVICE\n", "\nSERVICE"), expected)
         self.assertIn('as_sandbox mkdir -p "$home/.config/systemd/user/docker.service.d"', SOURCE)
