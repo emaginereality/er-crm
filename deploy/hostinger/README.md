@@ -331,3 +331,38 @@ A daemon restart replaces its Unix socket inode.
 Recreate the agent containers after that restart; restarting their processes alone is insufficient.
 Host reboot ordering and recovery remain explicit staging acceptance checks.
 Do not delete state, database, or secret volumes during recovery.
+
+## Disposable CI runtime
+
+`rootless-ci-setup.sh` is restricted to GitHub-hosted Ubuntu24.04 x86_64 runners.
+It does not replace `rootless-setup.sh` on the VPS.
+The runner keeps its existing rootful Docker service and CLI.
+The test extracts Docker29.9.2 into the fresh, root-owned `/opt/crm-ci-docker-29.9.2` prefix.
+Only the dedicated account's clean PATH selects those binaries.
+The script verifies both rootless client and daemon versions.
+It also verifies the original rootful version, identity, process, start timestamp, and CLI checksum.
+
+The runtime uses these checked artifacts:
+
+| Artifact | Official source | SHA256 |
+| --- | --- | --- |
+| Docker29.9.2 static x86_64 archive | [Docker static archive](https://download.docker.com/linux/static/stable/x86_64/docker-29.9.2.tgz) | `9ac225999fd5e863f7694c728ef23d480616b1e5639328fa309befd4243d69eb` |
+| Matching Ubuntu noble rootless extras | [Docker rootless package](https://download.docker.com/linux/ubuntu/dists/noble/pool/stable/amd64/docker-ce-rootless-extras_29.9.2-1~ubuntu.24.04~noble_amd64.deb) | `19533f8712a28e0a16a052250a4a157eccebd2dbe710ed9c8b801c26688a100c` |
+
+The static archive checksum was calculated from Docker's HTTPS download on 2026-10-26.
+The rootless package checksum also matches Docker's signed Ubuntu noble repository metadata.
+The verified release key fingerprint is `9DC858229FC7DD38854AE2D88D81803C0EBFCD88`.
+The package name, architecture, and version receive separate checks before extraction.
+No Docker package is installed, upgraded, or removed through apt.
+Missing Ubuntu rootless prerequisites receive the existing no-upgrade and no-removal guards.
+
+A temporary AppArmor profile permits user namespaces for the exact pinned RootlessKit executable path.
+This follows Docker's [Ubuntu24.04 rootless guidance](https://docs.docker.com/engine/security/rootless/troubleshoot/).
+The profile is a scoped namespace permission, not a claim of additional container AppArmor confinement.
+Global namespace restrictions and AppArmor remain active.
+The workflow unloads this profile and removes the isolated prefix during cleanup.
+It does not restart AppArmor or change system-wide namespace settings.
+
+Docker recommends [static binaries for testing](https://docs.docker.com/engine/install/binaries/), not unattended production updates.
+The VPS continues using its inspected, matching Docker CE packages.
+Failure diagnostics retain at most 200 log lines from each native agent service before disposable cleanup.

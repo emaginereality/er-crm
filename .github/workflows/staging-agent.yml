@@ -38,15 +38,24 @@ jobs:
           node-version: "24.22.1"
       - name: Pin the checked-out source
         run: echo "CRM_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Test rootless setup guards
+        run: |
+          python3 deploy/hostinger/rootless-ranges.test.py
+          python3 deploy/hostinger/rootless-ci.test.py
       - name: Prepare the disposable rootless runtime
         run: |
           ! getent passwd crm-sandbox
           ! getent passwd 2001
+          ! getent group crm-sandbox
           ! getent group 2001
           test ! -e /var/lib/crm-sandbox
+          test ! -e /run/user/2001
+          sudo test ! -e /var/lib/systemd/linger/crm-sandbox
+          sudo test ! -e /opt/crm-ci-docker-29.9.2
           test ! -e /srv/crm
           touch "$RUNNER_TEMP/crm-rootless-owned"
-          sudo bash deploy/hostinger/rootless-setup.sh --apply "$(hostname)"
+          sudo env GITHUB_ACTIONS="$GITHUB_ACTIONS" RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" RUNNER_OS="$RUNNER_OS" \
+            bash deploy/hostinger/rootless-ci-setup.sh --apply-ci "$(hostname)"
           sudo bash deploy/hostinger/resource-setup.sh --apply "$(hostname)"
           echo "CRM_SANDBOX_SOCKET_GID=$(sudo stat -c '%g' /run/user/2001/docker.sock)" >> "$GITHUB_ENV"
       - name: Validate Compose
@@ -67,6 +76,9 @@ jobs:
       - name: Report container state
         if: always()
         run: docker compose ps --all
+      - name: Report native agent failure diagnostics
+        if: failure()
+        run: CRM_SANDBOX_SOCKET_GID=${CRM_SANDBOX_SOCKET_GID:-2001} docker compose logs --no-color --tail 200 agent-build agent
       - name: Remove disposable resources
         if: always()
         run: |
@@ -74,10 +86,15 @@ jobs:
           CRM_SANDBOX_SOCKET_GID=${CRM_SANDBOX_SOCKET_GID:-2001} docker compose down --volumes --remove-orphans || cleanup_status=$?
           if test -f "$RUNNER_TEMP/crm-rootless-owned"; then
             sudo systemctl stop user@2001.service || true
+            sudo systemctl stop user-2001.slice || true
             sudo loginctl disable-linger crm-sandbox || true
             if getent passwd crm-sandbox >/dev/null; then
               sudo userdel --remove crm-sandbox || cleanup_status=$?
             fi
             sudo rm -rf /srv/crm
+            if sudo test -f /opt/crm-ci-docker-29.9.2/rootlesskit.apparmor; then
+              sudo apparmor_parser --remove /opt/crm-ci-docker-29.9.2/rootlesskit.apparmor || cleanup_status=$?
+            fi
+            sudo rm -rf /opt/crm-ci-docker-29.9.2
           fi
           exit "$cleanup_status"
