@@ -6,6 +6,7 @@ import { verifyRootlessDaemon } from "./sandbox-daemon.mjs";
 const role = process.argv[2];
 const commands = {
 	agent: {
+		executable: "node",
 		directory: "apps/agent",
 		args: [
 			"node_modules/eve/bin/eve.js",
@@ -69,7 +70,7 @@ for (const kind of command.secrets)
 
 if (role === "agent") await verifyRootlessDaemon();
 
-const child = spawn("bun", command.args, {
+const child = spawn(command.executable ?? "bun", command.args, {
 	cwd: `/srv/crm/${command.directory}`,
 	env: environment,
 	stdio: "inherit",

@@ -44,10 +44,10 @@ jobs:
           python3 deploy/hostinger/rootless-ci.test.py
       - name: Prepare the disposable rootless runtime
         run: |
-          ! getent passwd crm-sandbox
-          ! getent passwd 2001
-          ! getent group crm-sandbox
-          ! getent group 2001
+          ! getent passwd crm-sandbox || exit 1
+          ! getent passwd 2001 || exit 1
+          ! getent group crm-sandbox || exit 1
+          ! getent group 2001 || exit 1
           test ! -e /var/lib/crm-sandbox
           test ! -e /run/user/2001
           sudo test ! -e /var/lib/systemd/linger/crm-sandbox
@@ -73,6 +73,13 @@ jobs:
             test "$published" = '{}' || test "$published" = 'null'
             test "$(docker inspect --format '{{.HostConfig.Privileged}}' "$id")" = false
           done
+      - name: Verify private daemon restart and socket recovery
+        run: |
+          docker compose exec -T agent bun -e "await Bun.write('/srv/crm/apps/agent/.eve/staging-state-check', 'synthetic-state')"
+          sudo runuser -u crm-sandbox -- env -i HOME=/var/lib/crm-sandbox PATH=/opt/crm-ci-docker-29.9.2/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/2001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/2001/bus systemctl --user restart docker.service
+          docker compose up --detach --no-deps --force-recreate --wait --wait-timeout 120 agent
+          docker compose exec -T agent bun -e "if (await Bun.file('/srv/crm/apps/agent/.eve/staging-state-check').text() !== 'synthetic-state') process.exit(1); await Bun.file('/srv/crm/apps/agent/.eve/staging-state-check').delete()"
+          docker compose exec -T agent bun deploy/hostinger/sandbox-smoke.mjs
       - name: Report container state
         if: always()
         run: docker compose ps --all

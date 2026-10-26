@@ -70,6 +70,11 @@ for (const [index, imageReference] of images.entries()) {
 				"test ! -e /run/crm-secrets && test ! -S /var/run/docker.sock && test ! -S /run/crm-sandbox/docker.sock && printf staging-only > /workspace/isolation-check",
 		});
 		assert.equal(written.exitCode, 0);
+		const denied = await opened.handle.sandbox.run({
+			command:
+				"test -x /usr/bin/timeout || exit 2; if /usr/bin/timeout 3 bash -c 'exec 3<>/dev/tcp/192.0.2.1/443' 2>/dev/null; then exit 1; fi",
+		});
+		assert.equal(denied.exitCode, 0);
 		await opened.handle.onSessionStop();
 		const resumed = await provider.resume(context, artifact, opened.state);
 		const persisted = await resumed.sandbox.run({

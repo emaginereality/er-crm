@@ -366,3 +366,10 @@ It does not restart AppArmor or change system-wide namespace settings.
 Docker recommends [static binaries for testing](https://docs.docker.com/engine/install/binaries/), not unattended production updates.
 The VPS continues using its inspected, matching Docker CE packages.
 Failure diagnostics retain at most 200 log lines from each native agent service before disposable cleanup.
+
+
+The agent process starts with the pinned Node runtime, not Bun's Node-compatibility layer.
+The sandbox probe also attempts TCP access to a reserved documentation address and requires failure.
+The runner restarts only its private daemon, then recreates the agent to bind the new socket inode.
+A synthetic state marker and sandbox resume checks verify storage and socket recovery.
+This does not verify a paid model turn or complete workflow resumption.
