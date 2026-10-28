@@ -1,0 +1,10 @@
+services:
+  agent-build:
+    build:
+      context: ../..
+  agent:
+    build:
+      context: ../..
+volumes:
+  agent-output:
+    name: crm-staging-ci-agent-output-${CRM_SOURCE_SHA}

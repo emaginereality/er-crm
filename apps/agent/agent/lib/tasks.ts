@@ -70,14 +70,12 @@ export async function claimDue(
 
 export async function retireExhausted(
 	limit: number = DISPATCH.reconcile.retire,
+	client: Pick<Prisma.TransactionClient, "$queryRaw"> = db,
 ): Promise<TaskSubject[]> {
 	const now = new Date();
 
-	return db.$queryRaw<TaskSubject[]>`
-		UPDATE "agentTask" AS t
-		SET "finishedAt" = ${now},
-			"outcome" = ${RETIRED_OUTCOME}
-		WHERE t.id IN (
+	return client.$queryRaw<TaskSubject[]>`
+		WITH exhausted AS MATERIALIZED (
 			SELECT c.id
 			FROM "agentTask" AS c
 			WHERE c."finishedAt" IS NULL
@@ -87,6 +85,11 @@ export async function retireExhausted(
 			LIMIT ${limit}
 			FOR UPDATE SKIP LOCKED
 		)
+		UPDATE "agentTask" AS t
+		SET "finishedAt" = ${now},
+			"outcome" = ${RETIRED_OUTCOME}
+		FROM exhausted
+		WHERE t.id = exhausted.id
 		RETURNING t.id, t."contactId", t."companyId", t."dealId", t.kind;
 	`;
 }

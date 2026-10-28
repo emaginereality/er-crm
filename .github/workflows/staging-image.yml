@@ -1,0 +1,65 @@
+name: Staging image
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/staging-image.yml
+      - .dockerignore
+      - deploy/hostinger/**
+      - apps/**
+      - packages/**
+      - package.json
+      - bun.lock
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-image-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Docker foundation smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      STAGING_HOSTNAME: staging.example.invalid
+      ALLOWED_SIGN_IN: staging-test@example.invalid
+      COMPOSE_PROJECT_NAME: crm-staging-ci
+      COMPOSE_FILE: deploy/hostinger/compose.yaml:deploy/hostinger/compose.ci.yaml
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+      - name: Pin the checked-out source
+        run: echo "CRM_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Check secret initialization fixtures
+        run: node --test deploy/hostinger/bootstrap.test.mjs
+      - name: Check rootless allocation fixtures
+        run: python3 deploy/hostinger/rootless-ranges.test.py
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Build and start disposable staging services
+        run: docker compose up --build --detach --wait --wait-timeout 240
+      - name: Verify runtime boundaries
+        run: |
+          docker compose exec -T api bun deploy/hostinger/smoke.mjs
+          for service in postgres api app; do
+            id=$(docker compose ps -q "$service")
+            test -n "$id"
+            published=$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$id")
+            test "$published" = '{}' || test "$published" = 'null'
+            test "$(docker inspect --format '{{.HostConfig.Privileged}}' "$id")" = false
+          done
+      - name: Report container state
+        if: always()
+        run: docker compose ps --all
+      - name: Remove disposable resources
+        if: always()
+        run: docker compose down --volumes --remove-orphans

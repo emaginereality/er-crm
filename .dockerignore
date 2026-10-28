@@ -1,0 +1,15 @@
+.git
+**/node_modules
+**/.next
+**/.eve
+**/.output
+**/.turbo
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+**/.env
+**/.env.*
+!.env.example
+**/*.pem
+**/*.key

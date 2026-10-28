@@ -1,5 +1,6 @@
 import { defineSchedule } from "eve/schedules";
 import crm from "../channels/crm";
+import { skipPausedBackgroundDispatch } from "../lib/background-dispatch";
 import { sweepBlankFacts } from "../lib/blank-facts";
 import {
 	pendingAgentRunIds,
@@ -12,6 +13,8 @@ import { reconcileStaleTasks } from "../lib/stale-tasks";
 export default defineSchedule({
 	cron: "* * * * *",
 	async run({ to, waitUntil, appAuth }) {
+		if (skipPausedBackgroundDispatch()) return;
+
 		waitUntil(
 			Promise.all([
 				sweepBlankFacts(),

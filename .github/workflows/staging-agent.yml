@@ -1,0 +1,116 @@
+name: Staging agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - .github/workflows/staging-agent.yml
+      - deploy/hostinger/**
+      - apps/agent/**
+      - packages/**
+      - package.json
+      - bun.lock
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-agent-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Rootless agent smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STAGING_HOSTNAME: staging.example.invalid
+      ALLOWED_SIGN_IN: staging-test@example.invalid
+      COMPOSE_PROJECT_NAME: crm-staging-ci
+      COMPOSE_FILE: deploy/hostinger/compose.yaml:deploy/hostinger/compose.ci.yaml:deploy/hostinger/compose.agent.yaml:deploy/hostinger/compose.agent-ci.yaml
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+      - name: Pin the checked-out source
+        run: echo "CRM_SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Test rootless setup guards
+        run: |
+          python3 deploy/hostinger/rootless-ranges.test.py
+          python3 deploy/hostinger/rootless-ci.test.py
+          node --test deploy/hostinger/agent-output.test.mjs
+      - name: Prepare the disposable rootless runtime
+        run: |
+          ! getent passwd crm-sandbox || exit 1
+          ! getent passwd 2001 || exit 1
+          ! getent group crm-sandbox || exit 1
+          ! getent group 2001 || exit 1
+          test ! -e /var/lib/crm-sandbox
+          test ! -e /run/user/2001
+          sudo test ! -e /var/lib/systemd/linger/crm-sandbox
+          sudo test ! -e /opt/crm-ci-docker-29.9.2
+          test ! -e /srv/crm
+          touch "$RUNNER_TEMP/crm-rootless-owned"
+          sudo env GITHUB_ACTIONS="$GITHUB_ACTIONS" RUNNER_ENVIRONMENT="$RUNNER_ENVIRONMENT" RUNNER_OS="$RUNNER_OS" \
+            bash deploy/hostinger/rootless-ci-setup.sh --apply-ci "$(hostname)"
+          sudo bash deploy/hostinger/resource-setup.sh --apply "$(hostname)"
+          echo "CRM_SANDBOX_SOCKET_GID=$(sudo stat -c '%g' /run/user/2001/docker.sock)" >> "$GITHUB_ENV"
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Build and start the native agent without model credentials
+        run: docker compose up --build --detach --wait --wait-timeout 600
+      - name: Verify the application and isolated native sandbox provider
+        run: |
+          docker compose exec -T api bun deploy/hostinger/smoke.mjs
+          docker compose exec -T agent bun deploy/hostinger/sandbox-smoke.mjs
+          for service in postgres api app agent; do
+            id=$(docker compose ps -q "$service")
+            test -n "$id"
+            published=$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$id")
+            test "$published" = '{}' || test "$published" = 'null'
+            test "$(docker inspect --format '{{.HostConfig.Privileged}}' "$id")" = false
+          done
+      - name: Verify private daemon restart and socket recovery
+        run: |
+          docker compose exec -T agent bun -e "await Bun.write('/srv/crm/apps/agent/.eve/staging-state-check', 'synthetic-state')"
+          sudo runuser -u crm-sandbox -- env -i HOME=/var/lib/crm-sandbox PATH=/opt/crm-ci-docker-29.9.2/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/2001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/2001/bus systemctl --user restart docker.service
+          docker compose up --detach --no-deps --force-recreate --wait --wait-timeout 120 agent
+          docker compose exec -T agent bun -e "if (await Bun.file('/srv/crm/apps/agent/.eve/staging-state-check').text() !== 'synthetic-state') process.exit(1); await Bun.file('/srv/crm/apps/agent/.eve/staging-state-check').delete()"
+          docker compose exec -T agent bun deploy/hostinger/sandbox-smoke.mjs
+      - name: Report container state
+        if: always()
+        run: docker compose ps --all
+      - name: Report private runtime startup diagnostics
+        if: failure()
+        run: |
+          sudo journalctl --no-pager --lines 100 _UID=2001 _SYSTEMD_USER_UNIT=docker.service
+          sudo journalctl -k --no-pager --lines 60 --grep='apparmor.*crm-ci|rootlesskit|userns' || true
+          if sudo test -S /run/user/2001/bus; then
+            sudo runuser -u crm-sandbox -- env -i HOME=/var/lib/crm-sandbox PATH=/opt/crm-ci-docker-29.9.2/bin:/usr/bin:/bin XDG_RUNTIME_DIR=/run/user/2001 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/2001/bus systemctl --user show docker.service --property=ActiveState,SubState,Result,ExecMainCode,ExecMainStatus
+          fi
+      - name: Report native agent failure diagnostics
+        if: failure()
+        run: CRM_SANDBOX_SOCKET_GID=${CRM_SANDBOX_SOCKET_GID:-2001} docker compose logs --no-color --tail 200 agent-build agent
+      - name: Remove disposable resources
+        if: always()
+        run: |
+          cleanup_status=0
+          CRM_SANDBOX_SOCKET_GID=${CRM_SANDBOX_SOCKET_GID:-2001} docker compose down --volumes --remove-orphans || cleanup_status=$?
+          if test -f "$RUNNER_TEMP/crm-rootless-owned"; then
+            sudo systemctl stop user@2001.service || true
+            sudo systemctl stop user-2001.slice || true
+            sudo loginctl disable-linger crm-sandbox || true
+            if getent passwd crm-sandbox >/dev/null; then
+              sudo userdel --remove crm-sandbox || cleanup_status=$?
+            fi
+            sudo rm -rf /srv/crm
+            if sudo test -f /opt/crm-ci-docker-29.9.2/rootlesskit.apparmor; then
+              sudo apparmor_parser --remove /opt/crm-ci-docker-29.9.2/rootlesskit.apparmor || cleanup_status=$?
+            fi
+            sudo rm -rf /opt/crm-ci-docker-29.9.2
+          fi
+          exit "$cleanup_status"

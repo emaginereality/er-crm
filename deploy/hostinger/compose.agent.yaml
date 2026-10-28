@@ -1,0 +1,104 @@
+x-agent-image: &agent-image
+  image: crm-staging-agent:${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
+  build: &agent-build-config
+    context: https://github.com/emaginereality/er-crm.git#${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
+    dockerfile: deploy/hostinger/Dockerfile
+    target: agent-runtime
+    args:
+      STAGING_ORIGIN: https://${STAGING_HOSTNAME:?Set the approved staging hostname}
+
+x-sandbox-access: &sandbox-access
+  DOCKER_HOST: unix:///run/crm-sandbox/docker.sock
+  CRM_SANDBOX_PROVIDER: docker
+  CRM_BACKGROUND_DISPATCH_PAUSED: "1"
+  CRM_TELEMETRY_DISABLED: "1"
+  EVE_TELEMETRY_DISABLED: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+x-sandbox-socket: &sandbox-socket
+  type: bind
+  source: /run/user/2001/docker.sock
+  target: /run/crm-sandbox/docker.sock
+  bind:
+    create_host_path: false
+
+services:
+  agent-build:
+    <<: *agent-image
+    image: crm-staging-agent-builder:${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
+    build:
+      <<: *agent-build-config
+      target: agent-builder
+    entrypoint: ["bun", "deploy/hostinger/agent-build.mjs", "${CRM_SOURCE_SHA}"]
+    restart: "no"
+    init: true
+    group_add: ["${CRM_SANDBOX_SOCKET_GID:?Set the verified rootless socket group}"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    pids_limit: 256
+    environment: *sandbox-access
+    volumes:
+      - *sandbox-socket
+      - type: bind
+        source: /srv/crm/apps/agent/.eve/sandbox-cache
+        target: /srv/crm/apps/agent/.eve/sandbox-cache
+        bind:
+          create_host_path: false
+      - agent-output:/run/crm-agent-output
+    networks: [backend]
+
+  agent:
+    <<: *agent-image
+    command: ["agent"]
+    restart: unless-stopped
+    init: true
+    group_add: ["${CRM_SANDBOX_SOCKET_GID:?Set the verified rootless socket group}"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    pids_limit: 256
+    environment:
+      <<: *sandbox-access
+      NODE_ENV: production
+      APP_URL: https://${STAGING_HOSTNAME}
+      API_URL: https://${STAGING_HOSTNAME}
+      AGENT_URL: http://agent:2000
+      PORT: "2000"
+      ALLOWED_SIGN_IN: ${ALLOWED_SIGN_IN:?Set the approved single staging email}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      agent-build:
+        condition: service_completed_successfully
+    volumes:
+      - *sandbox-socket
+      - agent-output:/srv/crm/apps/agent/.output:ro
+      - agent-state:/srv/crm/apps/agent/.eve
+      - database-secret:/run/crm-secrets/database:ro
+      - auth-secret:/run/crm-secrets/auth:ro
+      - bridge-secret:/run/crm-secrets/bridge:ro
+      - provider-secret:/run/crm-secrets/provider:ro
+      - chat-secret:/run/crm-secrets/chat:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "bun", "-e", "const r = await fetch('http://127.0.0.1:2000/eve/v1/health'); process.exit(r.ok ? 0 : 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  api:
+    environment:
+      AGENT_URL: http://agent:2000
+    depends_on:
+      agent:
+        condition: service_healthy
+
+  app:
+    environment:
+      AGENT_URL: http://agent:2000
+
+volumes:
+  agent-output:
+    name: crm-staging-agent-output-${CRM_SOURCE_SHA:?Set the exact reviewed source commit}
+  agent-state:

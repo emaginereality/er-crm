@@ -43,7 +43,8 @@
 		}
 	},
 	"overrides": {
-		"@better-auth/core": "1.6.33",
+		"@better-auth/core": "1.7.7",
+		"qs": "6.16.1",
 		"@nestjs/swagger>js-yaml": "5.4.2",
 		"@nestjs/platform-express>multer": "2.5.0",
 		"@vercel/cli-config>zod": "4.6.6",
