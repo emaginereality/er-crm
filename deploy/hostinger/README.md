@@ -94,6 +94,10 @@ A repository URL alone resolves a default Compose path and branch.
 Use the explicit reviewed Compose content instead.
 
 The create operation replaces an existing project with the same name.
+The Hostinger manager pulls image names before startup. It does not reliably build local-only image names.
+An action marked successful does not prove that containers started.
+Inspect containers and build logs before reporting deployment success.
+The approved VPS console can build the pinned images, then run `docker compose up -d --no-build`.
 Read the current state before each use.
 Replacement needs approval and a rollback plan.
 Do not delete volumes for a retry.
@@ -319,6 +323,9 @@ The framework sandbox image remains `ghcr.io/vercel/eve:0.69.0`.
 The application image pins Node24.22.1 and the Docker29.9.2 CLI digest.
 
 Eve builds in the separate, non-root builder image.
+The builder removes only its empty, image-created `.output` directory before compilation.
+This prevents OverlayFS `EXDEV` errors when Eve renames a directory from the image layer.
+The guard rejects symlinks and files. It preserves nonempty output and does not remove mounted output volumes.
 Its compiler workspace and output share one filesystem for atomic publication.
 Only the sandbox cache uses the secret-free host bind.
 The builder copies completed output into a source-specific named volume after the build succeeds.

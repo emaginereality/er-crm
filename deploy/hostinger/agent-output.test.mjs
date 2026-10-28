@@ -1,9 +1,47 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { publishAgentOutput } from "./agent-output.mjs";
+import { prepareBuildOutput, publishAgentOutput } from "./agent-output.mjs";
+
+test("build preparation removes only an empty directory and accepts an absent path", async () => {
+	await withOutput(async (source, destination) => {
+		await prepareBuildOutput(destination);
+		await assert.rejects(lstat(destination), { code: "ENOENT" });
+		await prepareBuildOutput(destination);
+		await prepareBuildOutput(source);
+		assert.equal(
+			await readFile(join(source, "server/index.mjs"), "utf8"),
+			"synthetic-output",
+		);
+	});
+});
+
+test("build preparation rejects files and symlinks without changing their contents", async () => {
+	await withOutput(async (source, destination) => {
+		await rm(destination, { recursive: true });
+		await symlink(source, destination);
+		await assert.rejects(prepareBuildOutput(destination), /real directory/);
+		assert.ok((await lstat(destination)).isSymbolicLink());
+		assert.equal(
+			await readFile(join(source, "server/index.mjs"), "utf8"),
+			"synthetic-output",
+		);
+		await rm(destination);
+		await writeFile(destination, "preserve");
+		await assert.rejects(prepareBuildOutput(destination), /real directory/);
+		assert.equal(await readFile(destination, "utf8"), "preserve");
+	});
+});
 
 async function withOutput(run) {
 	const root = await mkdtemp(join(tmpdir(), "crm-agent-output-"));

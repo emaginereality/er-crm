@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
 	cp,
+	lstat,
 	readdir,
 	readFile,
 	rename,
 	rm,
+	rmdir,
 	stat,
 	writeFile,
 } from "node:fs/promises";
@@ -15,6 +17,18 @@ const requiredArtifacts = [
 	"server/index.mjs",
 	".eve/compile/sandbox-prepared-artifacts.json",
 ];
+
+export async function prepareBuildOutput(root) {
+	let metadata;
+	try {
+		metadata = await lstat(root);
+	} catch (error) {
+		if (error.code === "ENOENT") return;
+		throw error;
+	}
+	assert.ok(metadata.isDirectory(), "Build output must be a real directory.");
+	if ((await readdir(root)).length === 0) await rmdir(root);
+}
 
 async function validateOutput(root) {
 	for (const path of requiredArtifacts)

@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
-import { publishAgentOutput } from "./agent-output.mjs";
+import { prepareBuildOutput, publishAgentOutput } from "./agent-output.mjs";
 import { verifyRootlessDaemon } from "./sandbox-daemon.mjs";
 
 await verifyRootlessDaemon();
+await prepareBuildOutput("/srv/crm/apps/agent/.output");
 process.umask(0o027);
 const child = spawn("bun", ["run", "build"], {
 	cwd: "/srv/crm/apps/agent",
